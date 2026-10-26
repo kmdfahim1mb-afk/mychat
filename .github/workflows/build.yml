@@ -28,6 +28,8 @@ jobs:
           cp pubspec.yaml app/pubspec.yaml
           cp main.dart app/lib/main.dart
           cp google-services.json app/google-services.json
+          cp icon.png app/icon.png
+          cp icon_fg.png app/icon_fg.png || true
 
       - name: Generate Firebase options from google-services.json
         working-directory: app
@@ -53,9 +55,32 @@ jobs:
       - name: Patch Android settings
         working-directory: app
         run: |
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          APP_NAME=$(grep -oP "kAppName = '\K[^']+" lib/main.dart || echo "Alap")
+          echo "App name: $APP_NAME"
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' $MANIFEST
+          sed -i "s#android:label=\"[^\"]*\"#android:label=\"$APP_NAME\"#" $MANIFEST
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle* || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle* || true
+
+      - name: Set app icon
+        working-directory: app
+        run: |
+          flutter pub add dev:flutter_launcher_icons
+          cat > flutter_launcher_icons.yaml <<'EOF'
+          flutter_launcher_icons:
+            android: true
+            ios: false
+            image_path: "icon.png"
+          EOF
+          if [ -f icon_fg.png ]; then
+          cat >> flutter_launcher_icons.yaml <<'EOF'
+            adaptive_icon_background: "#0A7A66"
+            adaptive_icon_foreground: "icon_fg.png"
+          EOF
+          fi
+          flutter pub get
+          dart run flutter_launcher_icons
 
       - name: Build APK
         working-directory: app
@@ -67,5 +92,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: MyChat build ${{ github.run_number }}
+          name: Alap build ${{ github.run_number }}
           files: app/build/app/outputs/flutter-apk/app-release.apk
