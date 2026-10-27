@@ -58,7 +58,7 @@ jobs:
           APP_NAME=$(grep -oP "kAppName = '\K[^']+" lib/main.dart || echo "Alap")
           echo "App name: $APP_NAME"
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' $MANIFEST
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>\n    <application#' $MANIFEST
           sed -i "s#android:label=\"[^\"]*\"#android:label=\"$APP_NAME\"#" $MANIFEST
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle* || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle* || true
@@ -86,7 +86,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --no-shrink
 
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
