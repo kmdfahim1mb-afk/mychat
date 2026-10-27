@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -10,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,7 +23,6 @@ import 'firebase_options.dart';
 // অ্যাপের নাম বদলাতে শুধু নিচের লাইনের নামটা বদলান (ইংরেজি অক্ষরে লিখুন)
 const kAppName = 'Alap';
 
-const kGreen = Color(0xFF075E54);
 
 // ছবি/ফাইল/ভয়েসের সর্বোচ্চ আকার (Firestore-এর ১ MB সীমার কারণে)
 const kMaxBytes = 700000;
@@ -57,12 +58,12 @@ Future<void> pickLanguage(BuildContext context) async {
       children: [
         ListTile(
           title: const Text('বাংলা'),
-          trailing: isBn ? const Icon(Icons.check, color: kGreen) : null,
+          trailing: isBn ? Icon(Icons.check, color: brand(ctx)) : null,
           onTap: () => Navigator.pop(ctx, 'bn'),
         ),
         ListTile(
           title: const Text('English'),
-          trailing: !isBn ? const Icon(Icons.check, color: kGreen) : null,
+          trailing: !isBn ? Icon(Icons.check, color: brand(ctx)) : null,
           onTap: () => Navigator.pop(ctx, 'en'),
         ),
       ],
@@ -155,7 +156,190 @@ const Map<String, String> _en = {
   'ফাইল পাঠানো যায়নি': 'Could not send file',
   'ফাইল খোলা যায়নি': 'Could not open file',
   'ছবি দেখা যাচ্ছে না': 'Cannot show photo',
+  'অ্যাকাউন্ট সেটিংস': 'Account settings',
+  'নাম পরিবর্তন': 'Change name',
+  'নতুন নাম': 'New name',
+  'নাম বদলানো হয়েছে': 'Name updated',
+  'ইমেইল পরিবর্তন': 'Change email',
+  'নতুন ইমেইল': 'New email',
+  'বর্তমান পাসওয়ার্ড': 'Current password',
+  'নতুন ইমেইলে একটা ভেরিফিকেশন লিংক পাঠানো হয়েছে। লিংকে ট্যাপ করলে ইমেইল বদলে যাবে, তারপর নতুন ইমেইল দিয়ে আবার লগইন করুন।':
+      'A verification link was sent to the new email. Tap the link to change your email, then log in again with the new email.',
+  'ঠিক আছে': 'OK',
+  'থিম': 'Theme',
+  'রঙ': 'Color',
+  'সিস্টেম': 'System',
+  'লাইট': 'Light',
+  'ডার্ক': 'Dark',
+  'ডিলিট করলে বিপ সাউন্ড': 'Beep sound on delete',
+  'ভাষা': 'Language',
+  'ভয়েস কল': 'Voice call',
+  'ভয়েস কল আসছে': 'Incoming voice call',
+  'কল করা হচ্ছে…': 'Calling…',
+  'সংযুক্ত হচ্ছে…': 'Connecting…',
+  'কল শেষ': 'Call ended',
+  'কল করা যায়নি': 'Could not start the call',
+  'মিসড কল': 'Missed call',
+  'কল ফিরিয়ে দেওয়া হয়েছে': 'Call declined',
+  'অন্য একটা কল চলছে': 'Another call is in progress',
+  'মিউট': 'Mute',
+  'স্পিকার': 'Speaker',
+  'কল ধরুন': 'Answer',
+  'কল কাটুন': 'End call',
+  'প্রোফাইল': 'Profile',
 };
+
+// ---------------- থিম (রঙ), সাউন্ড ----------------
+const kDefaultGreen = Color(0xFF075E54);
+
+final ValueNotifier<int> themeSeed = ValueNotifier<int>(0xFF075E54);
+final ValueNotifier<String> themeModeN = ValueNotifier<String>('system');
+final ValueNotifier<bool> deleteSoundOn = ValueNotifier<bool>(true);
+
+const kThemeColors = <int>[
+  0xFF075E54, // সবুজ
+  0xFF1565C0, // নীল
+  0xFF6A1B9A, // বেগুনি
+  0xFFE65100, // কমলা
+  0xFFC62828, // লাল
+  0xFFAD1457, // গোলাপি
+  0xFF00695C, // টিল
+  0xFF37474F, // ধূসর
+];
+
+/// অ্যাপের মূল রঙ (থিম থেকে নেয়, তাই রঙ বদলালে নিজে বদলে যায়)
+Color brand(BuildContext c) =>
+    Theme.of(c).appBarTheme.backgroundColor ?? kDefaultGreen;
+
+bool isDark(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
+
+Future<void> savePref(String key, Object value) async {
+  try {
+    final p = await SharedPreferences.getInstance();
+    if (value is String) await p.setString(key, value);
+    if (value is int) await p.setInt(key, value);
+    if (value is bool) await p.setBool(key, value);
+  } catch (_) {}
+}
+
+Future<void> setThemeColor(int c) async {
+  themeSeed.value = c;
+  await savePref('themeSeed', c);
+}
+
+Future<void> setThemeMode(String m) async {
+  themeModeN.value = m;
+  await savePref('themeMode', m);
+}
+
+Future<void> setDeleteSound(bool v) async {
+  deleteSoundOn.value = v;
+  await savePref('deleteSound', v);
+}
+
+/// সহজ টোন (WAV) বানায়। প্রতিটা অংশ: [শুরুর ফ্রিকোয়েন্সি, শেষের ফ্রিকোয়েন্সি, সেকেন্ড, জোর]
+/// ফ্রিকোয়েন্সি 0 মানে নীরবতা।
+Uint8List makeWav(List<List<double>> parts) {
+  const rate = 22050;
+  final counts = [for (final p in parts) (rate * p[2]).round()];
+  final total = counts.fold<int>(0, (a, b) => a + b);
+  final data = ByteData(44 + total * 2);
+  void str(int o, String t) {
+    for (var i = 0; i < t.length; i++) {
+      data.setUint8(o + i, t.codeUnitAt(i));
+    }
+  }
+
+  str(0, 'RIFF');
+  data.setUint32(4, 36 + total * 2, Endian.little);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  data.setUint32(16, 16, Endian.little);
+  data.setUint16(20, 1, Endian.little);
+  data.setUint16(22, 1, Endian.little);
+  data.setUint32(24, rate, Endian.little);
+  data.setUint32(28, rate * 2, Endian.little);
+  data.setUint16(32, 2, Endian.little);
+  data.setUint16(34, 16, Endian.little);
+  str(36, 'data');
+  data.setUint32(40, total * 2, Endian.little);
+
+  var pos = 44;
+  for (var k = 0; k < parts.length; k++) {
+    final f1 = parts[k][0];
+    final f2 = parts[k][1];
+    final vol = parts[k][3];
+    final n = counts[k];
+    var phase = 0.0;
+    for (var i = 0; i < n; i++) {
+      final t = n <= 1 ? 0.0 : i / (n - 1);
+      final f = f1 + (f2 - f1) * t;
+      phase += 2 * math.pi * f / rate;
+      final att = math.min(1.0, i / (rate * 0.01));
+      final rel = math.min(1.0, (n - i) / (rate * 0.03));
+      final v = (f1 == 0 && f2 == 0) ? 0.0 : math.sin(phase) * vol * att * rel;
+      data.setInt16(pos, (v * 32767).round(), Endian.little);
+      pos += 2;
+    }
+  }
+  return data.buffer.asUint8List();
+}
+
+Future<String> _wavFile(String name, List<List<double>> parts) async {
+  final dir = await getTemporaryDirectory();
+  final f = File('${dir.path}/$name');
+  if (!await f.exists()) await f.writeAsBytes(makeWav(parts));
+  return f.path;
+}
+
+/// এখন কোনো কল চলছে কি না
+bool inCall = false;
+
+String? _beepPath;
+String? _ringPath;
+AudioPlayer? _ringPlayer;
+
+/// ডিলিট করলে ছোট্ট একটা নরম "বিপ" (নিচের দিকে নামা টোন, বাদ্যযন্ত্রের মতো নয়)
+Future<void> playDeleteBeep() async {
+  if (!deleteSoundOn.value) return;
+  try {
+    HapticFeedback.mediumImpact();
+    _beepPath ??= await _wavFile('alap_delete_v1.wav', [
+      [950, 480, 0.13, 0.35]
+    ]);
+    final p = AudioPlayer();
+    p.onPlayerComplete.first.then((_) => p.dispose());
+    await p.play(DeviceFileSource(_beepPath!));
+  } catch (_) {}
+}
+
+/// কলের রিং (ফোনের মতো দুই বিপ, থেমে থেমে)
+Future<void> startRing() async {
+  try {
+    await stopRing();
+    _ringPath ??= await _wavFile('alap_ring_v1.wav', [
+      [425, 425, 0.4, 0.25],
+      [0, 0, 0.2, 0],
+      [425, 425, 0.4, 0.25],
+      [0, 0, 1.8, 0],
+    ]);
+    final p = AudioPlayer();
+    _ringPlayer = p;
+    await p.setReleaseMode(ReleaseMode.loop);
+    await p.play(DeviceFileSource(_ringPath!));
+  } catch (_) {}
+}
+
+Future<void> stopRing() async {
+  final p = _ringPlayer;
+  _ringPlayer = null;
+  if (p != null) {
+    try {
+      await p.stop();
+      await p.dispose();
+    } catch (_) {}
+  }
+}
 
 // ---------------- সাধারণ সাহায্যকারী ফাংশন ----------------
 
@@ -164,6 +348,9 @@ Future<void> main() async {
   try {
     final p = await SharedPreferences.getInstance();
     appLang.value = p.getString('lang') ?? 'bn';
+    themeSeed.value = p.getInt('themeSeed') ?? 0xFF075E54;
+    themeModeN.value = p.getString('themeMode') ?? 'system';
+    deleteSoundOn.value = p.getBool('deleteSound') ?? true;
   } catch (_) {}
   await Firebase.initializeApp(options: firebaseOptions);
   runApp(const MyChatApp());
@@ -315,6 +502,8 @@ Map<String, dynamic> previewOf(Map<String, dynamic>? m) {
       return {'lastType': 'voice', 'lastText': ''};
     case 'image':
       return {'lastType': 'image', 'lastText': ''};
+    case 'call':
+      return {'lastType': 'call', 'lastText': ''};
     case 'file':
       return {
         'lastType': 'file',
@@ -338,9 +527,33 @@ String previewLabel(Map<String, dynamic> chat) {
       return '📷 ${tr('ছবি')}';
     case 'file':
       return '📎 $text';
+    case 'call':
+      return '📞 ${tr('ভয়েস কল')}';
     default:
       return text;
   }
+}
+
+/// চ্যাটে মেসেজ পাঠায় এবং চ্যাট তালিকা আপডেট করে
+Future<void> postMessage(
+    String otherUid, String otherName, Map<String, dynamic> msg) async {
+  final me = FirebaseAuth.instance.currentUser!;
+  final chat =
+      FirebaseFirestore.instance.collection('chats').doc(pairId(me.uid, otherUid));
+  final a = chat.set({
+    'members': [me.uid, otherUid],
+    'names': {me.uid: myName, otherUid: otherName},
+    ...previewOf(msg),
+    'lastTime': FieldValue.serverTimestamp(),
+    'lastSender': me.uid,
+    'hiddenBy': <String>[],
+  }, SetOptions(merge: true));
+  final b = chat.collection('messages').add({
+    ...msg,
+    'senderId': me.uid,
+    'time': FieldValue.serverTimestamp(),
+  });
+  await Future.wait([a, b]);
 }
 
 // ---------------- অ্যাপ ----------------
@@ -349,20 +562,29 @@ class MyChatApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: appLang,
-      builder: (context, lang, _) => MaterialApp(
-        key: ValueKey(lang),
+    return AnimatedBuilder(
+      animation: Listenable.merge([appLang, themeSeed, themeModeN]),
+      builder: (context, _) {
+        final seed = Color(themeSeed.value);
+        ThemeData mk(Brightness b) => ThemeData(
+              colorScheme:
+                  ColorScheme.fromSeed(seedColor: seed, brightness: b),
+              appBarTheme: AppBarTheme(
+                backgroundColor: seed,
+                foregroundColor: Colors.white,
+              ),
+              useMaterial3: true,
+            );
+        final mode = themeModeN.value == 'dark'
+            ? ThemeMode.dark
+            : (themeModeN.value == 'light' ? ThemeMode.light : ThemeMode.system);
+        return MaterialApp(
+        key: ValueKey(appLang.value),
         title: kAppName,
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: kGreen),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: kGreen,
-            foregroundColor: Colors.white,
-          ),
-          useMaterial3: true,
-        ),
+        theme: mk(Brightness.light),
+        darkTheme: mk(Brightness.dark),
+        themeMode: mode,
         home: StreamBuilder<User?>(
           stream: FirebaseAuth.instance.authStateChanges(),
           builder: (context, snap) {
@@ -375,7 +597,8 @@ class MyChatApp extends StatelessWidget {
             return HomePage(key: ValueKey(user.uid));
           },
         ),
-      ),
+        );
+      },
     );
   }
 }
@@ -460,15 +683,15 @@ class _AuthPageState extends State<AuthPage> {
                     width: 96,
                     height: 96,
                     errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.chat, size: 72, color: kGreen),
+                        Icon(Icons.chat, size: 72, color: brand(context)),
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(kAppName,
+                Text(kAppName,
                     style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
-                        color: kGreen)),
+                        color: brand(context))),
                 const SizedBox(height: 24),
                 if (!_isLogin)
                   TextField(
@@ -572,6 +795,7 @@ Future<void> deleteMyAccount(BuildContext context) async {
     barrierDismissible: false,
     builder: (_) => const Center(child: CircularProgressIndicator()),
   );
+  var deleted = false;
   try {
     final cred = EmailAuthProvider.credential(
         email: user.email!, password: pass.text.trim());
@@ -615,6 +839,8 @@ Future<void> deleteMyAccount(BuildContext context) async {
     // প্রোফাইল ও লগইন অ্যাকাউন্ট
     await db.collection('users').doc(uid).delete();
     await user.delete();
+    deleted = true;
+    playDeleteBeep();
     messenger
         .showSnackBar(SnackBar(content: Text(tr('অ্যাকাউন্ট ডিলিট হয়েছে'))));
   } on FirebaseAuthException catch (e) {
@@ -623,7 +849,11 @@ Future<void> deleteMyAccount(BuildContext context) async {
     messenger.showSnackBar(
         SnackBar(content: Text('${tr('ডিলিট করা যায়নি')}: $e')));
   } finally {
-    nav.pop();
+    if (deleted) {
+      nav.popUntil((r) => r.isFirst);
+    } else {
+      nav.pop();
+    }
   }
 }
 
@@ -773,6 +1003,33 @@ class _HomePageState extends State<HomePage> {
       }
       if (mounted) setState(() => _outgoing = ids);
     }, onError: onErr));
+
+    // আসা ভয়েস কল (অ্যাপ খোলা থাকলে রিং হবে)
+    _subs.add(db
+        .collection('calls')
+        .where('callee', isEqualTo: me.uid)
+        .where('status', isEqualTo: 'ringing')
+        .snapshots()
+        .listen((s) {
+      for (final c in s.docChanges) {
+        if (c.type != DocumentChangeType.added) continue;
+        final d = c.doc.data();
+        if (d == null) continue;
+        final t = (d['time'] as Timestamp?)?.toDate();
+        if (t != null && DateTime.now().difference(t).inSeconds > 90) continue;
+        if (inCall) {
+          c.doc.reference.update({'status': 'declined'}).catchError((_) {});
+          continue;
+        }
+        if (!mounted) continue;
+        inCall = true;
+        final session = CallSession.incoming(c.doc.id, d);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CallPage(session: session)),
+        );
+      }
+    }, onError: (_) {}));
   }
 
   @override
@@ -856,12 +1113,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _guard(Future<void> Function() f, [String? ok]) async {
+  Future<bool> _guard(Future<void> Function() f, [String? ok]) async {
     try {
       await f();
       if (ok != null) toast(context, ok);
+      return true;
     } catch (e) {
       toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+      return false;
     }
   }
 
@@ -926,9 +1185,10 @@ class _HomePageState extends State<HomePage> {
     final db = FirebaseFirestore.instance;
     final id = pairId(me.uid, e.uid);
     if (action == 'hide') {
-      await _guard(() => db.collection('chats').doc(id).update({
+      final done = await _guard(() => db.collection('chats').doc(id).update({
             'hiddenBy': FieldValue.arrayUnion([me.uid])
           }));
+      if (done) playDeleteBeep();
     } else if (action == 'unfriend') {
       final yes = await confirmDialog(
           context,
@@ -936,7 +1196,9 @@ class _HomePageState extends State<HomePage> {
           '${e.name} ${tr('কে ফ্রেন্ড তালিকা থেকে বাদ দেবেন?')}',
           tr('বাদ দিন'));
       if (yes && mounted) {
-        await _guard(() => db.collection('friendships').doc(id).delete());
+        final done =
+            await _guard(() => db.collection('friendships').doc(id).delete());
+        if (done) playDeleteBeep();
       }
     }
   }
@@ -973,9 +1235,10 @@ class _HomePageState extends State<HomePage> {
             children: [
               Flexible(child: Text(e.name, overflow: TextOverflow.ellipsis)),
               if (e.friend)
-                const Padding(
-                  padding: EdgeInsets.only(left: 6),
-                  child: Icon(Icons.verified_user, size: 14, color: kGreen),
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Icon(Icons.verified_user,
+                      size: 14, color: brand(context)),
                 ),
             ],
           ),
@@ -987,7 +1250,7 @@ class _HomePageState extends State<HomePage> {
             overflow: TextOverflow.ellipsis,
           ),
           trailing: Text(fmtTime(e.time),
-              style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
           onTap: () => _openChat(e.uid, e.name),
           onLongPress: () => _manage(e),
         );
@@ -997,7 +1260,7 @@ class _HomePageState extends State<HomePage> {
 
   // ---------- সার্চ ফলাফল ----------
   Widget _avatar(String name) => CircleAvatar(
-        backgroundColor: kGreen,
+        backgroundColor: brand(context),
         child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
             style: const TextStyle(color: Colors.white)),
       );
@@ -1005,8 +1268,8 @@ class _HomePageState extends State<HomePage> {
   Widget _action(String uid, String name) {
     if (_friends.containsKey(uid)) {
       return Text(tr('ফ্রেন্ড'),
-          style:
-              const TextStyle(color: kGreen, fontWeight: FontWeight.bold));
+          style: TextStyle(
+              color: brand(context), fontWeight: FontWeight.bold));
     }
     if (_incoming.contains(uid)) {
       return FilledButton.tonal(
@@ -1024,7 +1287,7 @@ class _HomePageState extends State<HomePage> {
       );
     }
     return IconButton(
-      icon: const Icon(Icons.person_add_alt_1, color: kGreen),
+      icon: Icon(Icons.person_add_alt_1, color: brand(context)),
       tooltip: tr('ফ্রেন্ড রিকোয়েস্ট পাঠান'),
       onPressed: () => _guard(() => sendFriendRequest(uid, name),
           tr('ফ্রেন্ড রিকোয়েস্ট পাঠানো হয়েছে')),
@@ -1091,7 +1354,12 @@ class _HomePageState extends State<HomePage> {
           ),
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'lang') {
+              if (v == 'settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                );
+              } else if (v == 'lang') {
                 pickLanguage(context);
               } else if (v == 'logout') {
                 FirebaseAuth.instance.signOut();
@@ -1100,6 +1368,14 @@ class _HomePageState extends State<HomePage> {
               }
             },
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'settings',
+                child: Row(children: [
+                  const Icon(Icons.settings),
+                  const SizedBox(width: 8),
+                  Text(tr('অ্যাকাউন্ট সেটিংস')),
+                ]),
+              ),
               const PopupMenuItem(
                 value: 'lang',
                 child: Row(children: [
@@ -1132,7 +1408,7 @@ class _HomePageState extends State<HomePage> {
       body: Column(
         children: [
           Container(
-            color: kGreen,
+            color: brand(context),
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: TextField(
               controller: _search,
@@ -1146,7 +1422,8 @@ class _HomePageState extends State<HomePage> {
                     : IconButton(
                         icon: const Icon(Icons.close), onPressed: _clearSearch),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor:
+                    isDark(context) ? const Color(0xFF2A3942) : Colors.white,
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1185,15 +1462,15 @@ class RequestsPage extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                 child: Text(title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, color: kGreen)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: brand(context))),
               ),
               if (docs.isEmpty)
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(tr('কিছু নেই'),
-                      style: const TextStyle(color: Colors.black54)),
+                      style: TextStyle(color: Theme.of(context).hintColor)),
                 ),
               for (final d in docs)
                 Builder(builder: (context) {
@@ -1205,7 +1482,7 @@ class RequestsPage extends StatelessWidget {
                           .toString();
                   return ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: kGreen,
+                      backgroundColor: brand(context),
                       child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
                           style: const TextStyle(color: Colors.white)),
                     ),
@@ -1224,8 +1501,8 @@ class RequestsPage extends StatelessWidget {
                               },
                             ),
                             IconButton(
-                              icon: const Icon(Icons.check_circle,
-                                  color: kGreen),
+                              icon: Icon(Icons.check_circle,
+                                  color: brand(context)),
                               tooltip: tr('গ্রহণ করুন'),
                               onPressed: () async {
                                 try {
@@ -1323,26 +1600,20 @@ class _ChatPageState extends State<ChatPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  /// চ্যাট ডকুমেন্ট তৈরি/আপডেট করে — এর ফলে দুজনের হোম তালিকায় চ্যাটটা দেখা যায়
-  Future<void> _touchChat(Map<String, dynamic> preview) {
-    return _chatRef.set({
-      'members': [me.uid, widget.otherUid],
-      'names': {me.uid: myName, widget.otherUid: widget.otherName},
-      ...preview,
-      'lastTime': FieldValue.serverTimestamp(),
-      'lastSender': me.uid,
-      'hiddenBy': <String>[],
-    }, SetOptions(merge: true));
-  }
+  Future<void> _post(Map<String, dynamic> msg) =>
+      postMessage(widget.otherUid, widget.otherName, msg);
 
-  Future<void> _post(Map<String, dynamic> msg) async {
-    final a = _touchChat(previewOf(msg));
-    final b = _msgs.add({
-      ...msg,
-      'senderId': me.uid,
-      'time': FieldValue.serverTimestamp(),
-    });
-    await Future.wait([a, b]);
+  void _call() {
+    if (inCall) {
+      _snack(tr('অন্য একটা কল চলছে'));
+      return;
+    }
+    inCall = true;
+    final session = CallSession.outgoing(widget.otherUid, widget.otherName);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CallPage(session: session)),
+    );
   }
 
   Future<void> _send() async {
@@ -1365,17 +1636,17 @@ class _ChatPageState extends State<ChatPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library, color: kGreen),
+              leading: Icon(Icons.photo_library, color: brand(ctx)),
               title: Text(tr('গ্যালারি থেকে ছবি')),
               onTap: () => Navigator.pop(ctx, 'gallery'),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_camera, color: kGreen),
+              leading: Icon(Icons.photo_camera, color: brand(ctx)),
               title: Text(tr('ক্যামেরা')),
               onTap: () => Navigator.pop(ctx, 'camera'),
             ),
             ListTile(
-              leading: const Icon(Icons.insert_drive_file, color: kGreen),
+              leading: Icon(Icons.insert_drive_file, color: brand(ctx)),
               title: Text(tr('ফাইল')),
               onTap: () => Navigator.pop(ctx, 'file'),
             ),
@@ -1516,6 +1787,7 @@ class _ChatPageState extends State<ChatPage> {
             tr('ডিলিট করুন'));
         if (!yes) return;
         await d.reference.delete();
+        playDeleteBeep();
         if (isLatest) {
           final prev = docs.length > 1 ? docs[1].data() : null;
           await _chatRef.update(previewOf(prev));
@@ -1611,7 +1883,7 @@ class _ChatPageState extends State<ChatPage> {
               style: const TextStyle(fontSize: 16)),
           const Spacer(),
           CircleAvatar(
-            backgroundColor: kGreen,
+            backgroundColor: brand(context),
             child: IconButton(
               icon: const Icon(Icons.send, color: Colors.white),
               tooltip: tr('পাঠান'),
@@ -1624,7 +1896,7 @@ class _ChatPageState extends State<ChatPage> {
     return Row(
       children: [
         IconButton(
-          icon: const Icon(Icons.attach_file, color: kGreen),
+          icon: Icon(Icons.attach_file, color: brand(context)),
           onPressed: _busy ? null : _attach,
         ),
         Expanded(
@@ -1636,7 +1908,8 @@ class _ChatPageState extends State<ChatPage> {
             decoration: InputDecoration(
               hintText: tr('মেসেজ লিখুন'),
               filled: true,
-              fillColor: const Color(0xFFF0F0F0),
+              fillColor:
+                  isDark(context) ? const Color(0xFF2A3942) : const Color(0xFFF0F0F0),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               border: OutlineInputBorder(
@@ -1649,7 +1922,7 @@ class _ChatPageState extends State<ChatPage> {
         ),
         const SizedBox(width: 6),
         CircleAvatar(
-          backgroundColor: kGreen,
+          backgroundColor: brand(context),
           child: IconButton(
             icon: Icon(_hasText ? Icons.send : Icons.mic, color: Colors.white),
             tooltip:
@@ -1679,6 +1952,27 @@ class _ChatPageState extends State<ChatPage> {
           name: (m['fileName'] ?? 'file').toString(),
           size: (m['size'] as num?)?.toInt() ?? 0,
         );
+      case 'call':
+        {
+          final res = (m['result'] ?? 'missed').toString();
+          final dur = (m['duration'] as num?)?.toInt() ?? 0;
+          final label = res == 'ended'
+              ? '${tr('ভয়েস কল')} · ${clock(dur)}'
+              : (res == 'declined'
+                  ? tr('কল ফিরিয়ে দেওয়া হয়েছে')
+                  : tr('মিসড কল'));
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(res == 'ended' ? Icons.call : Icons.call_missed,
+                  size: 20,
+                  color: res == 'ended' ? brand(context) : Colors.red),
+              const SizedBox(width: 8),
+              Flexible(
+                  child: Text(label, style: const TextStyle(fontSize: 15))),
+            ],
+          );
+        }
       default:
         return Text((m['text'] ?? '').toString(),
             style: const TextStyle(fontSize: 16));
@@ -1691,8 +1985,18 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFECE5DD),
-      appBar: AppBar(title: Text(widget.otherName)),
+      backgroundColor:
+          isDark(context) ? const Color(0xFF0B141A) : const Color(0xFFECE5DD),
+      appBar: AppBar(
+        title: Text(widget.otherName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.call),
+            tooltip: tr('ভয়েস কল'),
+            onPressed: _call,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
@@ -1731,12 +2035,17 @@ class _ChatPageState extends State<ChatPage> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.white70,
+                                color: isDark(context)
+                                    ? const Color(0xCC202C33)
+                                    : Colors.white70,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(dayLabel(d),
-                                  style: const TextStyle(
-                                      fontSize: 12, color: Colors.black87)),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark(context)
+                                          ? Colors.white70
+                                          : Colors.black87)),
                             ),
                           ),
                         Align(
@@ -1754,8 +2063,12 @@ class _ChatPageState extends State<ChatPage> {
                                       MediaQuery.of(context).size.width * 0.75),
                               decoration: BoxDecoration(
                                 color: mine
-                                    ? const Color(0xFFDCF8C6)
-                                    : Colors.white,
+                                    ? (isDark(context)
+                                        ? const Color(0xFF005C4B)
+                                        : const Color(0xFFDCF8C6))
+                                    : (isDark(context)
+                                        ? const Color(0xFF202C33)
+                                        : Colors.white),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -1765,9 +2078,9 @@ class _ChatPageState extends State<ChatPage> {
                                   const SizedBox(height: 2),
                                   Text(
                                       '${edited ? '${tr('সম্পাদিত')} · ' : ''}${hhmm(d)}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 10,
-                                          color: Colors.black54)),
+                                          color: Theme.of(context).hintColor)),
                                 ],
                               ),
                             ),
@@ -1784,7 +2097,7 @@ class _ChatPageState extends State<ChatPage> {
           SafeArea(
             child: Container(
               padding: const EdgeInsets.all(8),
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               child: _inputBar(),
             ),
           ),
@@ -1898,7 +2211,7 @@ class FileBubble extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.insert_drive_file, size: 36, color: kGreen),
+          Icon(Icons.insert_drive_file, size: 36, color: brand(context)),
           const SizedBox(width: 8),
           Flexible(
             child: Column(
@@ -1909,7 +2222,8 @@ class FileBubble extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 15)),
                 Text(numL('$kb KB'),
-                    style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                    style: TextStyle(
+                        fontSize: 11, color: Theme.of(context).hintColor)),
               ],
             ),
           ),
@@ -1981,15 +2295,705 @@ class _VoiceBubbleState extends State<VoiceBubble> {
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(),
           iconSize: 38,
-          color: kGreen,
+          color: brand(context),
           icon: Icon(_playing ? Icons.stop_circle : Icons.play_circle_fill),
           onPressed: _toggle,
         ),
         const SizedBox(width: 8),
-        const Icon(Icons.graphic_eq, color: Colors.black45),
+        Icon(Icons.graphic_eq, color: Theme.of(context).hintColor),
         const SizedBox(width: 8),
         Text(clock(widget.duration), style: const TextStyle(fontSize: 14)),
       ],
+    );
+  }
+}
+
+// ---------------- অ্যাকাউন্ট সেটিংস ----------------
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  Future<void> _changeName() async {
+    final c = TextEditingController(text: myName);
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('নাম পরিবর্তন')),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          decoration: InputDecoration(
+              labelText: tr('নতুন নাম'), border: const OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: Text(tr('বাতিল'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              child: Text(tr('সেভ করুন'))),
+        ],
+      ),
+    );
+    if (res == null || res.isEmpty || res == myName) return;
+    try {
+      final u = FirebaseAuth.instance.currentUser!;
+      await u.updateDisplayName(res);
+      await u.reload();
+      final db = FirebaseFirestore.instance;
+      await db.collection('users').doc(u.uid).set(
+          {'uid': u.uid, 'name': res, 'nameLower': res.toLowerCase()},
+          SetOptions(merge: true));
+      // ফ্রেন্ড ও চ্যাট তালিকায় আমার নামও বদলে দেয়
+      final fr = await db
+          .collection('friendships')
+          .where('members', arrayContains: u.uid)
+          .get();
+      for (final d in fr.docs) {
+        await d.reference.update({'names.${u.uid}': res});
+      }
+      final ch = await db
+          .collection('chats')
+          .where('members', arrayContains: u.uid)
+          .get();
+      for (final d in ch.docs) {
+        await d.reference.update({'names.${u.uid}': res});
+      }
+      if (!mounted) return;
+      setState(() {});
+      toast(context, tr('নাম বদলানো হয়েছে'));
+    } catch (e) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+    }
+  }
+
+  Future<void> _changeEmail() async {
+    final e = TextEditingController();
+    final p = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('ইমেইল পরিবর্তন')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: e,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                    labelText: tr('নতুন ইমেইল'),
+                    border: const OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: p,
+                obscureText: true,
+                decoration: InputDecoration(
+                    labelText: tr('বর্তমান পাসওয়ার্ড'),
+                    border: const OutlineInputBorder()),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('বাতিল'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('সেভ করুন'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final newEmail = e.text.trim();
+    if (newEmail.isEmpty || !newEmail.contains('@')) {
+      if (mounted) toast(context, tr('ইমেইলটা সঠিক নয়'));
+      return;
+    }
+    try {
+      final u = FirebaseAuth.instance.currentUser!;
+      await u.reauthenticateWithCredential(EmailAuthProvider.credential(
+          email: u.email!, password: p.text.trim()));
+      await u.verifyBeforeUpdateEmail(newEmail);
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          content: Text(tr(
+              'নতুন ইমেইলে একটা ভেরিফিকেশন লিংক পাঠানো হয়েছে। লিংকে ট্যাপ করলে ইমেইল বদলে যাবে, তারপর নতুন ইমেইল দিয়ে আবার লগইন করুন।')),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(tr('ঠিক আছে'))),
+          ],
+        ),
+      );
+    } on FirebaseAuthException catch (ex) {
+      if (mounted) toast(context, authMsg(ex));
+    } catch (ex) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $ex');
+    }
+  }
+
+  Widget _header(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Text(t,
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: brand(context))),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final u = FirebaseAuth.instance.currentUser;
+    final name = myName;
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('অ্যাকাউন্ট সেটিংস'))),
+      body: ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 36,
+                  backgroundColor: brand(context),
+                  child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
+                      style:
+                          const TextStyle(fontSize: 30, color: Colors.white)),
+                ),
+                const SizedBox(height: 10),
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(u?.email ?? '',
+                    style: TextStyle(color: Theme.of(context).hintColor)),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.badge_outlined),
+            title: Text(tr('নাম পরিবর্তন')),
+            subtitle: Text(name),
+            onTap: _changeName,
+          ),
+          ListTile(
+            leading: const Icon(Icons.email_outlined),
+            title: Text(tr('ইমেইল পরিবর্তন')),
+            subtitle: Text(u?.email ?? ''),
+            onTap: _changeEmail,
+          ),
+          const Divider(),
+          _header('${tr('থিম')} / ${tr('রঙ')}'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final c in kThemeColors)
+                  GestureDetector(
+                    onTap: () => setThemeColor(c),
+                    child: CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Color(c),
+                      child: themeSeed.value == c
+                          ? const Icon(Icons.check, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: SegmentedButton<String>(
+              segments: [
+                ButtonSegment(value: 'system', label: Text(tr('সিস্টেম'))),
+                ButtonSegment(value: 'light', label: Text(tr('লাইট'))),
+                ButtonSegment(value: 'dark', label: Text(tr('ডার্ক'))),
+              ],
+              selected: {themeModeN.value},
+              onSelectionChanged: (v) => setThemeMode(v.first),
+            ),
+          ),
+          const Divider(height: 32),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: Text(tr('ভাষা')),
+            subtitle: Text(isBn ? 'বাংলা' : 'English'),
+            onTap: () => pickLanguage(context),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.volume_up_outlined),
+            title: Text(tr('ডিলিট করলে বিপ সাউন্ড')),
+            value: deleteSoundOn.value,
+            onChanged: (v) {
+              setDeleteSound(v);
+              setState(() {});
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: Text(tr('লগআউট')),
+            onTap: () {
+              Navigator.of(context).popUntil((r) => r.isFirst);
+              FirebaseAuth.instance.signOut();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_forever, color: Colors.red),
+            title: Text(tr('অ্যাকাউন্ট ডিলিট করুন'),
+                style: const TextStyle(color: Colors.red)),
+            onTap: () => deleteMyAccount(context),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------- ভয়েস কল (WebRTC) ----------------
+// সিগন্যালিং (কে কাকে ফোন করছে) Firestore দিয়ে হয়; কথা সরাসরি দুই ফোনের মধ্যে চলে।
+// নিজের TURN সার্ভার থাকলে নিচের তালিকায় যোগ করুন (ভিন্ন নেটওয়ার্কে কল ধরতে সাহায্য করে)।
+const kIceServers = <Map<String, dynamic>>[
+  {
+    'urls': [
+      'stun:stun.l.google.com:19302',
+      'stun:stun1.l.google.com:19302',
+    ]
+  },
+  // {'urls': 'turn:YOUR_TURN_HOST:3478', 'username': 'USER', 'credential': 'PASS'},
+];
+
+class CallSession {
+  final bool isCaller;
+  final String otherUid;
+  final String otherName;
+  final DocumentReference<Map<String, dynamic>> ref;
+
+  /// incoming | calling | connecting | connected | ended
+  final ValueNotifier<String> state;
+  String result = 'missed'; // ended | declined | missed
+  String? error;
+  bool muted = false;
+  bool speaker = false;
+  DateTime? connectedAt;
+
+  Map<String, dynamic>? _offer;
+  rtc.RTCPeerConnection? _pc;
+  rtc.MediaStream? _local;
+  final List<StreamSubscription> _subs = [];
+  final List<rtc.RTCIceCandidate> _queue = [];
+  final List<Map<String, dynamic>> _outBuf = [];
+  bool _remoteSet = false;
+  bool _answerStarted = false;
+  bool _docReady = false;
+  bool _finished = false;
+  Timer? _timeout;
+
+  CallSession._(
+      this.isCaller, this.otherUid, this.otherName, this.ref, String initial)
+      : state = ValueNotifier<String>(initial);
+
+  factory CallSession.outgoing(String otherUid, String otherName) {
+    final ref = FirebaseFirestore.instance.collection('calls').doc();
+    return CallSession._(true, otherUid, otherName, ref, 'calling');
+  }
+
+  factory CallSession.incoming(String callId, Map<String, dynamic> data) {
+    final ref = FirebaseFirestore.instance.collection('calls').doc(callId);
+    final s = CallSession._(false, (data['caller'] ?? '').toString(),
+        (data['callerName'] ?? '?').toString(), ref, 'incoming');
+    s._offer = Map<String, dynamic>.from(data['offer'] ?? {});
+    return s;
+  }
+
+  bool get finished => _finished;
+  String get _myColl => isCaller ? 'callerCandidates' : 'calleeCandidates';
+  String get _otherColl => isCaller ? 'calleeCandidates' : 'callerCandidates';
+
+  Future<void> _sendCand(Map<String, dynamic> m) async {
+    try {
+      await ref.collection(_myColl).add(m);
+    } catch (_) {}
+  }
+
+  void _markReady() {
+    _docReady = true;
+    for (final m in _outBuf) {
+      _sendCand(m);
+    }
+    _outBuf.clear();
+  }
+
+  Future<void> _setup() async {
+    final pc = await rtc.createPeerConnection(
+        {'iceServers': kIceServers, 'sdpSemantics': 'unified-plan'});
+    _pc = pc;
+    final local = await rtc.navigator.mediaDevices
+        .getUserMedia({'audio': true, 'video': false});
+    _local = local;
+    for (final t in local.getAudioTracks()) {
+      await pc.addTrack(t, local);
+    }
+    pc.onIceCandidate = (c) {
+      if (c.candidate == null) return;
+      final m = <String, dynamic>{
+        'candidate': c.candidate,
+        'sdpMid': c.sdpMid,
+        'sdpMLineIndex': c.sdpMLineIndex,
+      };
+      if (_docReady) {
+        _sendCand(m);
+      } else {
+        _outBuf.add(m);
+      }
+    };
+    pc.onConnectionState = (st) {
+      if (_finished) return;
+      if (st == rtc.RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        if (connectedAt == null) {
+          connectedAt = DateTime.now();
+          _timeout?.cancel();
+          stopRing();
+          state.value = 'connected';
+          rtc.Helper.setSpeakerphoneOn(speaker);
+        }
+      } else if (st ==
+          rtc.RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        endCall();
+      }
+    };
+  }
+
+  void _listen() {
+    _subs.add(ref.snapshots().listen(_onCallDoc));
+    _subs.add(ref.collection(_otherColl).snapshots().listen(_onCands));
+  }
+
+  /// কলকারী: কল শুরু করে
+  Future<void> start() async {
+    try {
+      await _setup();
+      final me = FirebaseAuth.instance.currentUser!;
+      final pc = _pc!;
+      final offer = await pc.createOffer({'offerToReceiveAudio': 1});
+      await pc.setLocalDescription(offer);
+      await ref.set({
+        'caller': me.uid,
+        'callee': otherUid,
+        'callerName': myName,
+        'calleeName': otherName,
+        'status': 'ringing',
+        'offer': {'sdp': offer.sdp, 'type': offer.type},
+        'time': FieldValue.serverTimestamp(),
+      });
+      _markReady();
+      _listen();
+      _timeout = Timer(const Duration(seconds: 45), () {
+        if (state.value == 'calling') endCall();
+      });
+      startRing();
+    } catch (e) {
+      error = '$e';
+      _finish();
+    }
+  }
+
+  /// যাকে কল করা হয়েছে: কল ধরে
+  Future<void> accept() async {
+    try {
+      stopRing();
+      state.value = 'connecting';
+      await _setup();
+      final pc = _pc!;
+      await pc.setRemoteDescription(
+          rtc.RTCSessionDescription(_offer!['sdp'], _offer!['type']));
+      _flushQueue();
+      final ans = await pc.createAnswer({'offerToReceiveAudio': 1});
+      await pc.setLocalDescription(ans);
+      if (_finished) return;
+      _markReady();
+      await ref.update({
+        'answer': {'sdp': ans.sdp, 'type': ans.type},
+        'status': 'accepted',
+      });
+      _listen();
+    } catch (e) {
+      error = '$e';
+      endCall();
+    }
+  }
+
+  void _onCallDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
+    if (_finished) return;
+    if (!snap.exists) {
+      _finish();
+      return;
+    }
+    final d = snap.data() ?? {};
+    final st = d['status'];
+    if (isCaller &&
+        st == 'accepted' &&
+        !_answerStarted &&
+        d['answer'] != null) {
+      _answerStarted = true;
+      final a = Map<String, dynamic>.from(d['answer']);
+      stopRing();
+      _timeout?.cancel();
+      state.value = 'connecting';
+      _pc
+          ?.setRemoteDescription(rtc.RTCSessionDescription(a['sdp'], a['type']))
+          .then((_) => _flushQueue())
+          .catchError((e) {
+        error = '$e';
+        endCall();
+      });
+    }
+    if (st == 'declined') {
+      result = 'declined';
+      _finish();
+    } else if (st == 'ended' || st == 'missed') {
+      _finish();
+    }
+  }
+
+  void _onCands(QuerySnapshot<Map<String, dynamic>> snap) {
+    for (final c in snap.docChanges) {
+      if (c.type != DocumentChangeType.added) continue;
+      final m = c.doc.data();
+      if (m == null) continue;
+      final cand = rtc.RTCIceCandidate(
+          m['candidate'] as String?, m['sdpMid'] as String?, m['sdpMLineIndex'] as int?);
+      if (_remoteSet) {
+        _pc?.addCandidate(cand).catchError((_) {});
+      } else {
+        _queue.add(cand);
+      }
+    }
+  }
+
+  void _flushQueue() {
+    _remoteSet = true;
+    for (final c in _queue) {
+      _pc?.addCandidate(c).catchError((_) {});
+    }
+    _queue.clear();
+  }
+
+  /// কল কাটা / বাতিল / ফিরিয়ে দেওয়া
+  Future<void> endCall() async {
+    if (_finished) return;
+    final connected =
+        state.value == 'connected' || state.value == 'connecting';
+    final status = connected ? 'ended' : (isCaller ? 'missed' : 'declined');
+    if (!isCaller && !connected) result = 'declined';
+    try {
+      await ref.update({'status': status});
+    } catch (_) {}
+    _finish();
+  }
+
+  void _finish() {
+    if (_finished) return;
+    _finished = true;
+    _timeout?.cancel();
+    stopRing();
+    for (final s in _subs) {
+      s.cancel();
+    }
+    if (connectedAt != null) result = 'ended';
+    final secs = connectedAt == null
+        ? 0
+        : DateTime.now().difference(connectedAt!).inSeconds;
+    try {
+      for (final t in _local?.getTracks() ?? <rtc.MediaStreamTrack>[]) {
+        t.stop();
+      }
+      _local?.dispose();
+      _pc?.close();
+    } catch (_) {}
+    state.value = 'ended';
+    // কলকারীর চ্যাটে কলের হিসাব (মিসড / কথা হয়েছে) লেখা থাকে
+    if (isCaller && error == null) {
+      postMessage(otherUid, otherName,
+          {'type': 'call', 'result': result, 'duration': secs}).catchError((_) {});
+    }
+  }
+
+  void toggleMute() {
+    muted = !muted;
+    for (final t in _local?.getAudioTracks() ?? <rtc.MediaStreamTrack>[]) {
+      t.enabled = !muted;
+    }
+  }
+
+  Future<void> toggleSpeaker() async {
+    speaker = !speaker;
+    try {
+      await rtc.Helper.setSpeakerphoneOn(speaker);
+    } catch (_) {}
+  }
+}
+
+class CallPage extends StatefulWidget {
+  final CallSession session;
+  const CallPage({super.key, required this.session});
+
+  @override
+  State<CallPage> createState() => _CallPageState();
+}
+
+class _CallPageState extends State<CallPage> {
+  Timer? _tick;
+  bool _popped = false;
+
+  CallSession get s => widget.session;
+
+  @override
+  void initState() {
+    super.initState();
+    s.state.addListener(_onState);
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+    if (s.isCaller) {
+      s.start();
+    } else {
+      startRing();
+    }
+  }
+
+  void _onState() {
+    if (s.state.value == 'ended' && !_popped) {
+      _popped = true;
+      stopRing();
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    s.state.removeListener(_onState);
+    _tick?.cancel();
+    inCall = false;
+    if (!s.finished) s.endCall();
+    stopRing();
+    super.dispose();
+  }
+
+  String _statusText() {
+    final st = s.state.value;
+    if (st == 'incoming') return tr('ভয়েস কল আসছে');
+    if (st == 'calling') return tr('কল করা হচ্ছে…');
+    if (st == 'connecting') return tr('সংযুক্ত হচ্ছে…');
+    if (st == 'connected') {
+      final d = s.connectedAt == null
+          ? 0
+          : DateTime.now().difference(s.connectedAt!).inSeconds;
+      return clock(d);
+    }
+    return s.error != null ? tr('কল করা যায়নি') : tr('কল শেষ');
+  }
+
+  Widget _btn(IconData icon, Color bg, String label, VoidCallback onTap) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: 30,
+          backgroundColor: bg,
+          child: IconButton(
+            iconSize: 28,
+            icon: Icon(icon, color: Colors.white),
+            onPressed: onTap,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: const TextStyle(color: Colors.white70)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = s.state.value;
+    final bg = Color.alphaBlend(Colors.black54, brand(context));
+    final List<Widget> buttons;
+    if (st == 'incoming') {
+      buttons = [
+        _btn(Icons.call_end, Colors.red, tr('কল কাটুন'), () => s.endCall()),
+        _btn(Icons.call, Colors.green, tr('কল ধরুন'), () => s.accept()),
+      ];
+    } else if (st == 'ended') {
+      buttons = [];
+    } else {
+      buttons = [
+        _btn(s.muted ? Icons.mic_off : Icons.mic,
+            s.muted ? Colors.white38 : Colors.white24, tr('মিউট'), () {
+          s.toggleMute();
+          setState(() {});
+        }),
+        _btn(Icons.call_end, Colors.red, tr('কল কাটুন'), () => s.endCall()),
+        _btn(Icons.volume_up, s.speaker ? Colors.white38 : Colors.white24,
+            tr('স্পিকার'), () async {
+          await s.toggleSpeaker();
+          if (mounted) setState(() {});
+        }),
+      ];
+    }
+    return Scaffold(
+      backgroundColor: bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const Spacer(flex: 2),
+            CircleAvatar(
+              radius: 56,
+              backgroundColor: Colors.white24,
+              child: Text(
+                s.otherName.isEmpty ? '?' : s.otherName[0].toUpperCase(),
+                style: const TextStyle(fontSize: 48, color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(s.otherName,
+                style: const TextStyle(
+                    fontSize: 26,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(_statusText(),
+                style: const TextStyle(fontSize: 18, color: Colors.white70)),
+            if (s.error != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(s.error!,
+                    textAlign: TextAlign.center,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.white54)),
+              ),
+            const Spacer(flex: 3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: buttons,
+            ),
+            const SizedBox(height: 48),
+          ],
+        ),
+      ),
     );
   }
 }
