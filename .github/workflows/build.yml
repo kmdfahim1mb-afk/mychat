@@ -75,7 +75,7 @@ jobs:
           EOF
           if [ -f icon_fg.png ]; then
           cat >> flutter_launcher_icons.yaml <<'EOF'
-            adaptive_icon_background: "#0A7A66"
+            adaptive_icon_background: "#014B4A"
             adaptive_icon_foreground: "icon_fg.png"
           EOF
           fi
