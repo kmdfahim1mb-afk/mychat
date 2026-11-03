@@ -187,6 +187,22 @@ const Map<String, String> _en = {
   'কল ধরুন': 'Answer',
   'কল কাটুন': 'End call',
   'প্রোফাইল': 'Profile',
+  'চ্যাট': 'Chats',
+  'কন্টাক্ট': 'Contacts',
+  'গ্রুপ': 'Groups',
+  'সেটিংস': 'Settings',
+  'আর কোনো চ্যাট নেই': 'No more chats yet',
+  'বন্ধুদের সাথে কথোপকথন শুরু করুন': 'Start a conversation with your friends',
+  'কন্টাক্ট খুঁজুন': 'Find Contacts',
+  'এখনো কোনো ফ্রেন্ড নেই': 'No friends yet',
+  'সার্চ করে ফ্রেন্ড রিকোয়েস্ট পাঠান': 'Search and send a friend request',
+  'গ্রুপ চ্যাট শীঘ্রই আসছে': 'Group chats are coming soon',
+  'গ্রুপ চ্যাটের ফিচার এখনো তৈরি হয়নি, পরে যোগ হবে।':
+      'Group chat is not built yet and will be added later.',
+  'সব চ্যাট': 'All chats',
+  'শুধু ফ্রেন্ড': 'Friends only',
+  'ফিল্টার': 'Filter',
+  'নতুন চ্যাট': 'New chat',
 };
 
 // ---------------- থিম (রঙ), সাউন্ড ----------------
@@ -529,6 +545,35 @@ String previewLabel(Map<String, dynamic> chat) {
       return '📎 $text';
     case 'call':
       return '📞 ${tr('ভয়েস কল')}';
+    default:
+      return text;
+  }
+}
+
+IconData? previewIcon(Map<String, dynamic> chat) {
+  switch (chat['lastType']) {
+    case 'voice':
+      return Icons.mic;
+    case 'image':
+      return Icons.photo;
+    case 'file':
+      return Icons.attach_file;
+    case 'call':
+      return Icons.call;
+    default:
+      return null;
+  }
+}
+
+String previewText(Map<String, dynamic> chat) {
+  final text = (chat['lastText'] ?? '').toString();
+  switch (chat['lastType']) {
+    case 'voice':
+      return tr('ভয়েস মেসেজ');
+    case 'image':
+      return tr('ছবি');
+    case 'call':
+      return tr('ভয়েস কল');
     default:
       return text;
   }
@@ -897,11 +942,16 @@ class _Entry {
   final String uid;
   String name;
   String lastText;
+  IconData? icon;
   Timestamp? time;
   bool chat;
   bool friend;
   _Entry(this.uid, this.name,
-      {this.lastText = '', this.time, this.chat = false, this.friend = false});
+      {this.lastText = '',
+      this.icon,
+      this.time,
+      this.chat = false,
+      this.friend = false});
 }
 
 class HomePage extends StatefulWidget {
@@ -914,6 +964,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final me = FirebaseAuth.instance.currentUser!;
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  int _tab = 0; // 0 চ্যাট, 1 কন্টাক্ট, 2 গ্রুপ, 3 সেটিংস
+  String _filter = 'all'; // all | friends
   final List<StreamSubscription> _subs = [];
   Timer? _debounce;
   int _token = 0;
@@ -1037,6 +1090,7 @@ class _HomePageState extends State<HomePage> {
       s.cancel();
     }
     _debounce?.cancel();
+    _searchFocus.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -1123,7 +1177,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ---------- চ্যাট তালিকা ----------
+  // ---------- তালিকা ----------
   List<_Entry> _entries() {
     final map = <String, _Entry>{};
     _chats.forEach((uid, data) {
@@ -1131,7 +1185,8 @@ class _HomePageState extends State<HomePage> {
       map[uid] = _Entry(
         uid,
         (names[uid] ?? '?').toString(),
-        lastText: previewLabel(data),
+        lastText: previewText(data),
+        icon: previewIcon(data),
         time: data['lastTime'] as Timestamp?,
         chat: true,
       );
@@ -1144,7 +1199,8 @@ class _HomePageState extends State<HomePage> {
         e.friend = true;
       }
     });
-    final list = map.values.toList();
+    var list = map.values.toList();
+    if (_filter == 'friends') list = list.where((e) => e.friend).toList();
     DateTime t(_Entry e) =>
         e.time?.toDate() ??
         (e.chat ? DateTime.now() : DateTime.fromMillisecondsSinceEpoch(0));
@@ -1202,68 +1258,228 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Widget _chatList() {
-    if (_error != null) {
-      return Center(
+  Future<void> _filterSheet() async {
+    final r = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.all_inbox),
+              title: Text(tr('সব চ্যাট')),
+              trailing: _filter == 'all'
+                  ? Icon(Icons.check, color: brand(ctx))
+                  : null,
+              onTap: () => Navigator.pop(ctx, 'all'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_user),
+              title: Text(tr('শুধু ফ্রেন্ড')),
+              trailing: _filter == 'friends'
+                  ? Icon(Icons.check, color: brand(ctx))
+                  : null,
+              onTap: () => Navigator.pop(ctx, 'friends'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (r != null && mounted) setState(() => _filter = r);
+  }
+
+  // ---------- ডিজাইনের ছোট ছোট অংশ ----------
+  Widget _avatar(String name, [double r = 20]) => CircleAvatar(
+        radius: r,
+        backgroundColor: brand(context),
+        child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
+            style: TextStyle(color: Colors.white, fontSize: r * 0.95)),
+      );
+
+  Widget _sub(IconData? icon, String text) {
+    final hint = Theme.of(context).hintColor;
+    return Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 17, color: hint),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 15, color: hint)),
+        ),
+      ],
+    );
+  }
+
+  Widget _card({
+    required Widget leading,
+    required String title,
+    required Widget subtitle,
+    Widget? trailing,
+    String time = '',
+    VoidCallback? onTap,
+    VoidCallback? onLong,
+  }) {
+    final hint = Theme.of(context).hintColor;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      decoration: BoxDecoration(
+        color: isDark(context) ? const Color(0xFF1B262C) : Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: onTap,
+          onLongPress: onLong,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                leading,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                          if (time.isNotEmpty)
+                            Text(time,
+                                style: TextStyle(fontSize: 13, color: hint)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      subtitle,
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                trailing ?? Icon(Icons.chevron_right, color: hint),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyHint(
+      {String? title, String? sub, bool button = true, int bottom = 24}) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 28, 24, bottom.toDouble()),
+      child: Column(
+        children: [
+          SizedBox(
+            width: 150,
+            height: 150,
+            child: CustomPaint(painter: _BubblesPainter(brand(context))),
+          ),
+          const SizedBox(height: 16),
+          Text(title ?? tr('আর কোনো চ্যাট নেই'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(sub ?? tr('বন্ধুদের সাথে কথোপকথন শুরু করুন'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 16, color: Theme.of(context).hintColor)),
+          if (button) ...[
+            const SizedBox(height: 18),
+            FilledButton.tonalIcon(
+              onPressed: () => _searchFocus.requestFocus(),
+              icon: const Icon(Icons.person_add_alt_1),
+              label: Text(tr('কন্টাক্ট খুঁজুন')),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _errorView() => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text('${tr('ত্রুটি')}: $_error', textAlign: TextAlign.center),
         ),
       );
-    }
-    final entries = _entries();
-    if (entries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            tr('এখনো কোনো চ্যাট বা ফ্রেন্ড নেই।\nউপরের সার্চবারে নাম বা পুরো ইমেইল লিখে কাউকে খুঁজুন।'),
-            textAlign: TextAlign.center,
+
+  Widget _chatList() {
+    if (_error != null) return _errorView();
+    final entries = _entries().where((e) => e.chat).toList();
+    return ListView(
+      padding: const EdgeInsets.only(top: 6, bottom: 100),
+      children: [
+        for (final e in entries)
+          _card(
+            leading: _avatar(e.name, 28),
+            title: e.name,
+            time: fmtTime(e.time),
+            subtitle: _sub(e.icon, e.lastText),
+            onTap: () => _openChat(e.uid, e.name),
+            onLong: () => _manage(e),
           ),
-        ),
-      );
-    }
-    return ListView.separated(
-      itemCount: entries.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, i) {
-        final e = entries[i];
-        return ListTile(
-          leading: _avatar(e.name),
-          title: Row(
-            children: [
-              Flexible(child: Text(e.name, overflow: TextOverflow.ellipsis)),
-              if (e.friend)
-                Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: Icon(Icons.verified_user,
-                      size: 14, color: brand(context)),
-                ),
-            ],
-          ),
-          subtitle: Text(
-            e.lastText.isNotEmpty
-                ? e.lastText
-                : tr('ফ্রেন্ড — মেসেজ করতে ট্যাপ করুন'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Text(fmtTime(e.time),
-              style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
-          onTap: () => _openChat(e.uid, e.name),
-          onLongPress: () => _manage(e),
-        );
-      },
+        _emptyHint(),
+      ],
     );
   }
 
-  // ---------- সার্চ ফলাফল ----------
-  Widget _avatar(String name) => CircleAvatar(
-        backgroundColor: brand(context),
-        child: Text(name.isEmpty ? '?' : name[0].toUpperCase(),
-            style: const TextStyle(color: Colors.white)),
-      );
+  Widget _contactsList() {
+    if (_error != null) return _errorView();
+    final list = _friends.entries.toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+    if (list.isEmpty) {
+      return ListView(children: [
+        _emptyHint(
+            title: tr('এখনো কোনো ফ্রেন্ড নেই'),
+            sub: tr('সার্চ করে ফ্রেন্ড রিকোয়েস্ট পাঠান')),
+      ]);
+    }
+    return ListView(
+      padding: const EdgeInsets.only(top: 6, bottom: 100),
+      children: [
+        for (final f in list)
+          _card(
+            leading: _avatar(f.value, 28),
+            title: f.value,
+            subtitle: _sub(Icons.verified_user, tr('ফ্রেন্ড')),
+            onTap: () => _openChat(f.key, f.value),
+            onLong: () => _manage(_Entry(f.key, f.value,
+                friend: true, chat: _chats.containsKey(f.key))),
+          ),
+      ],
+    );
+  }
 
+  Widget _groupsView() => ListView(children: [
+        _emptyHint(
+          title: tr('গ্রুপ চ্যাট শীঘ্রই আসছে'),
+          sub: tr('গ্রুপ চ্যাটের ফিচার এখনো তৈরি হয়নি, পরে যোগ হবে।'),
+          button: false,
+        ),
+      ]);
+
+  // ---------- সার্চ ফলাফল ----------
   Widget _action(String uid, String name) {
     if (_friends.containsKey(uid)) {
       return Text(tr('ফ্রেন্ড'),
@@ -1315,137 +1531,392 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     }
-    return ListView.separated(
-      itemCount: _results.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, i) {
-        final u = _results[i];
-        final uid = (u['uid'] ?? '').toString();
-        final name = (u['name'] ?? '?').toString();
-        return ListTile(
-          leading: _avatar(name),
-          title: Text(name),
-          subtitle: Text(maskEmail((u['email'] ?? '').toString())),
-          trailing: _action(uid, name),
-          onTap: () => _openChat(uid, name), // সরাসরি মেসেজ পাঠানো যাবে
-        );
-      },
+    return ListView(
+      padding: const EdgeInsets.only(top: 6, bottom: 100),
+      children: [
+        for (final u in _results)
+          Builder(builder: (context) {
+            final uid = (u['uid'] ?? '').toString();
+            final name = (u['name'] ?? '?').toString();
+            return _card(
+              leading: _avatar(name, 28),
+              title: name,
+              subtitle: _sub(null, maskEmail((u['email'] ?? '').toString())),
+              trailing: _action(uid, name),
+              onTap: () => _openChat(uid, name), // সরাসরি মেসেজ পাঠানো যাবে
+            );
+          }),
+      ],
+    );
+  }
+
+  // ---------- উপরের অংশ (ঢেউ-ব্যাকগ্রাউন্ড, নাম, সার্চবার) ----------
+  Widget _searchBar() {
+    final dark = isDark(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF1F2C34) : Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x26000000), blurRadius: 14, offset: Offset(0, 5)),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 18, right: 8),
+            child: Icon(Icons.search, size: 28),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _search,
+              focusNode: _searchFocus,
+              onChanged: _onQuery,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: tr('নাম বা পুরো ইমেইল দিয়ে খুঁজুন'),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 18),
+              ),
+            ),
+          ),
+          if (_q.isNotEmpty)
+            IconButton(
+                icon: const Icon(Icons.close), onPressed: _clearSearch),
+          Container(
+              width: 1, height: 30, color: Theme.of(context).dividerColor),
+          IconButton(
+            icon: Icon(Icons.tune,
+                color: _filter == 'all' ? null : brand(context)),
+            tooltip: tr('ফিল্টার'),
+            onPressed: _filterSheet,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _header() {
+    final b = brand(context);
+    final deep = Color.alphaBlend(Colors.black38, b);
+    return Material(
+      elevation: 6,
+      color: Colors.transparent,
+      shadowColor: Colors.black45,
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [b, deep],
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(child: CustomPaint(painter: _WavePainter())),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 6, 6, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const PlaneLogo(size: 40),
+                        const SizedBox(width: 12),
+                        const Text(kAppName,
+                            style: TextStyle(
+                                fontSize: 36,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: tr('ফ্রেন্ড রিকোয়েস্ট'),
+                          icon: Badge.count(
+                            count: _incoming.length,
+                            isLabelVisible: _incoming.isNotEmpty,
+                            child: const Icon(Icons.person_add_alt_1,
+                                color: Colors.white, size: 30),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const RequestsPage()),
+                          ),
+                        ),
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert,
+                              color: Colors.white, size: 28),
+                          onSelected: (v) {
+                            if (v == 'settings') {
+                              setState(() => _tab = 3);
+                            } else if (v == 'lang') {
+                              pickLanguage(context);
+                            } else if (v == 'logout') {
+                              FirebaseAuth.instance.signOut();
+                            } else if (v == 'delete') {
+                              deleteMyAccount(context);
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            PopupMenuItem(
+                              value: 'settings',
+                              child: Row(children: [
+                                const Icon(Icons.settings),
+                                const SizedBox(width: 8),
+                                Text(tr('অ্যাকাউন্ট সেটিংস')),
+                              ]),
+                            ),
+                            const PopupMenuItem(
+                              value: 'lang',
+                              child: Row(children: [
+                                Icon(Icons.language),
+                                SizedBox(width: 8),
+                                Text('ভাষা / Language'),
+                              ]),
+                            ),
+                            PopupMenuItem(
+                              value: 'logout',
+                              child: Row(children: [
+                                const Icon(Icons.logout),
+                                const SizedBox(width: 8),
+                                Text(tr('লগআউট')),
+                              ]),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Row(children: [
+                                const Icon(Icons.delete_forever,
+                                    color: Colors.red),
+                                const SizedBox(width: 8),
+                                Text(tr('অ্যাকাউন্ট ডিলিট করুন'),
+                                    style: const TextStyle(color: Colors.red)),
+                              ]),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: _searchBar(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chips() {
+    final icons = [Icons.chat_bubble, Icons.people, Icons.groups];
+    final labels = [tr('চ্যাট'), tr('কন্টাক্ট'), tr('গ্রুপ')];
+    final b = brand(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+      child: Row(
+        children: [
+          for (var i = 0; i < 3; i++)
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: i < 2 ? 10 : 0),
+                child: GestureDetector(
+                  onTap: () => setState(() => _tab = i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: _tab == i ? b : b.withAlpha(34),
+                      borderRadius: BorderRadius.circular(23),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icons[i],
+                            size: 20, color: _tab == i ? Colors.white : b),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(labels[i],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: _tab == i ? Colors.white : b)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PlaneLogo(size: 32),
-            SizedBox(width: 10),
-            Text(kAppName,
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: tr('ফ্রেন্ড রিকোয়েস্ট'),
-            icon: Badge.count(
-              count: _incoming.length,
-              isLabelVisible: _incoming.isNotEmpty,
-              child: const Icon(Icons.group_add),
-            ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RequestsPage()),
-            ),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'settings') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsPage()),
-                );
-              } else if (v == 'lang') {
-                pickLanguage(context);
-              } else if (v == 'logout') {
-                FirebaseAuth.instance.signOut();
-              } else if (v == 'delete') {
-                deleteMyAccount(context);
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'settings',
-                child: Row(children: [
-                  const Icon(Icons.settings),
-                  const SizedBox(width: 8),
-                  Text(tr('অ্যাকাউন্ট সেটিংস')),
-                ]),
-              ),
-              const PopupMenuItem(
-                value: 'lang',
-                child: Row(children: [
-                  Icon(Icons.language),
-                  SizedBox(width: 8),
-                  Text('ভাষা / Language'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'logout',
-                child: Row(children: [
-                  const Icon(Icons.logout),
-                  const SizedBox(width: 8),
-                  Text(tr('লগআউট')),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Row(children: [
-                  const Icon(Icons.delete_forever, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text(tr('অ্যাকাউন্ট ডিলিট করুন'),
-                      style: const TextStyle(color: Colors.red)),
-                ]),
-              ),
-            ],
+    final searching = _q.isNotEmpty;
+    final Widget body;
+    if (_tab == 3) {
+      body = const SettingsPage(embedded: true);
+    } else {
+      body = Column(
+        children: [
+          _header(),
+          if (!searching) _chips(),
+          Expanded(
+            child: searching
+                ? _searchList()
+                : (_tab == 0
+                    ? _chatList()
+                    : (_tab == 1 ? _contactsList() : _groupsView())),
           ),
         ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            color: brand(context),
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: TextField(
-              controller: _search,
-              onChanged: _onQuery,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: tr('নাম বা পুরো ইমেইল দিয়ে খুঁজুন'),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _q.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close), onPressed: _clearSearch),
-                filled: true,
-                fillColor:
-                    isDark(context) ? const Color(0xFF2A3942) : Colors.white,
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
+      );
+    }
+    final b = brand(context);
+    return Scaffold(
+      backgroundColor:
+          isDark(context) ? const Color(0xFF0E1417) : const Color(0xFFF2F7F6),
+      body: body,
+      floatingActionButton: (_tab == 0 && !searching)
+          ? FloatingActionButton(
+              onPressed: () => _searchFocus.requestFocus(),
+              tooltip: tr('নতুন চ্যাট'),
+              backgroundColor: b,
+              foregroundColor: Colors.white,
+              shape: const CircleBorder(),
+              child: const Icon(Icons.edit),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        indicatorColor: b.withAlpha(46),
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble, color: b),
+            label: tr('চ্যাট'),
           ),
-          Expanded(child: _q.isEmpty ? _chatList() : _searchList()),
+          NavigationDestination(
+            icon: const Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people, color: b),
+            label: tr('কন্টাক্ট'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.groups_outlined),
+            selectedIcon: Icon(Icons.groups, color: b),
+            label: tr('গ্রুপ'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings, color: b),
+            label: tr('সেটিংস'),
+          ),
         ],
       ),
     );
   }
+}
+
+class _WavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size s) {
+    final p1 = Paint()..color = const Color(0x14FFFFFF);
+    final path1 = Path()
+      ..moveTo(s.width * 0.40, 0)
+      ..quadraticBezierTo(
+          s.width * 0.28, s.height * 0.55, s.width, s.height * 0.62)
+      ..lineTo(s.width, 0)
+      ..close();
+    canvas.drawPath(path1, p1);
+    final p2 = Paint()..color = const Color(0x0DFFFFFF);
+    final path2 = Path()
+      ..moveTo(0, s.height * 0.55)
+      ..quadraticBezierTo(
+          s.width * 0.35, s.height * 0.35, s.width * 0.7, s.height)
+      ..lineTo(0, s.height)
+      ..close();
+    canvas.drawPath(path2, p2);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _BubblesPainter extends CustomPainter {
+  final Color color;
+  _BubblesPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final w = s.width, h = s.height;
+    Rect r(double l, double t, double rr, double b) =>
+        Rect.fromLTRB(l * w, t * h, rr * w, b * h);
+
+    // পেছনের হালকা বাবল
+    final backPaint = Paint()..color = color.withAlpha(45);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            r(0.42, 0.36, 0.96, 0.80), Radius.circular(w * 0.16)),
+        backPaint);
+    canvas.drawPath(
+        Path()
+          ..moveTo(0.80 * w, 0.76 * h)
+          ..lineTo(0.90 * w, 0.96 * h)
+          ..lineTo(0.66 * w, 0.78 * h)
+          ..close(),
+        backPaint);
+    final dot2 = Paint()..color = color.withAlpha(90);
+    canvas.drawCircle(Offset(0.60 * w, 0.58 * h), w * 0.03, dot2);
+    canvas.drawCircle(Offset(0.72 * w, 0.58 * h), w * 0.03, dot2);
+
+    // সামনের বাবল
+    final front = r(0.06, 0.14, 0.70, 0.62);
+    final fp = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color.lerp(color, Colors.white, 0.35)!, color],
+      ).createShader(front);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(front, Radius.circular(w * 0.18)), fp);
+    canvas.drawPath(
+        Path()
+          ..moveTo(0.20 * w, 0.58 * h)
+          ..lineTo(0.14 * w, 0.80 * h)
+          ..lineTo(0.38 * w, 0.60 * h)
+          ..close(),
+        fp);
+    final white = Paint()..color = Colors.white;
+    for (final x in [0.25, 0.38, 0.51]) {
+      canvas.drawCircle(Offset(x * w, 0.38 * h), w * 0.04, white);
+    }
+
+    // ঝিলিক
+    final sp = Paint()
+      ..color = color
+      ..strokeWidth = w * 0.02
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(0.60 * w, 0.06 * h), Offset(0.64 * w, 0.16 * h), sp);
+    canvas.drawLine(Offset(0.72 * w, 0.10 * h), Offset(0.80 * w, 0.18 * h), sp);
+    canvas.drawLine(Offset(0.80 * w, 0.24 * h), Offset(0.90 * w, 0.26 * h), sp);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubblesPainter old) => old.color != color;
 }
 
 // ---------------- ফ্রেন্ড রিকোয়েস্ট পেজ ----------------
@@ -2317,7 +2788,8 @@ class _VoiceBubbleState extends State<VoiceBubble> {
 
 // ---------------- অ্যাকাউন্ট সেটিংস ----------------
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final bool embedded;
+  const SettingsPage({super.key, this.embedded = false});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -2459,7 +2931,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final u = FirebaseAuth.instance.currentUser;
     final name = myName;
     return Scaffold(
-      appBar: AppBar(title: Text(tr('অ্যাকাউন্ট সেটিংস'))),
+      appBar: AppBar(
+        title: Text(tr('অ্যাকাউন্ট সেটিংস')),
+        automaticallyImplyLeading: !widget.embedded,
+      ),
       body: ListView(
         children: [
           Padding(
