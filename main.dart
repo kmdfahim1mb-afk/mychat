@@ -676,22 +676,21 @@ class _AuthPageState extends State<AuthPage> {
                     label: Text(isBn ? 'বাংলা' : 'English'),
                   ),
                 ),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'icon.png',
-                    width: 96,
-                    height: 96,
-                    errorBuilder: (_, __, ___) =>
-                        Icon(Icons.chat, size: 72, color: brand(context)),
+                Image.asset(
+                  'icon.png',
+                  width: 150,
+                  height: 150,
+                  errorBuilder: (_, __, ___) => Column(
+                    children: [
+                      Icon(Icons.chat, size: 72, color: brand(context)),
+                      Text(kAppName,
+                          style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: brand(context))),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(kAppName,
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: brand(context))),
                 const SizedBox(height: 24),
                 if (!_isLogin)
                   TextField(
@@ -1338,7 +1337,15 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(kAppName),
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PlaneLogo(size: 32),
+            SizedBox(width: 10),
+            Text(kAppName,
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: tr('ফ্রেন্ড রিকোয়েস্ট'),
@@ -2996,4 +3003,52 @@ class _CallPageState extends State<CallPage> {
       ),
     );
   }
+}
+
+// ---------------- Alap-এর কাগজের প্লেন আইকন ----------------
+class PlaneLogo extends StatelessWidget {
+  final double size;
+  const PlaneLogo({super.key, this.size = 32});
+
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size(size, size), painter: _PlanePainter());
+}
+
+class _PlanePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    Offset o(double x, double y) => Offset(x * size.width, y * size.height);
+    final a = o(0.02, 0.50); // বাঁ ডানার ডগা
+    final b = o(0.98, 0.08); // ডান ওপরের ডগা
+    final c = o(0.33, 0.60); // ভাঁজের ভেতরের বিন্দু
+    final d = o(0.56, 0.95); // নিচের ডগা
+    final g = o(0.36, 0.88); // লেজের ডগা
+    final h = o(0.46, 0.70);
+
+    Paint grad(Offset p1, Offset p2, Color c1, Color c2) => Paint()
+      ..shader = LinearGradient(colors: [c1, c2])
+          .createShader(Rect.fromPoints(p1, p2).inflate(1));
+
+    void tri(Offset p, Offset q, Offset r, Paint paint) {
+      final path = Path()
+        ..moveTo(p.dx, p.dy)
+        ..lineTo(q.dx, q.dy)
+        ..lineTo(r.dx, r.dy)
+        ..close();
+      canvas.drawPath(path, paint);
+    }
+
+    // ডান পাশ (হালকা পুদিনা)
+    tri(b, c, d,
+        grad(b, d, const Color(0xFFE6FFF3), const Color(0xFF7FF0C2)));
+    // ওপরের ডানা (উজ্জ্বল সবুজ)
+    tri(a, b, c,
+        grad(a, b, const Color(0xFF17E89C), const Color(0xFF8CFFC8)));
+    // ভাঁজের ছায়া (গাঢ় সবুজ)
+    tri(c, g, h, Paint()..color = const Color(0xFF0B7A62));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
