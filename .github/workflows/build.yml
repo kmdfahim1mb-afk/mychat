@@ -58,10 +58,24 @@ jobs:
           APP_NAME=$(grep -oP "kAppName = '\K[^']+" lib/main.dart || echo "Alap")
           echo "App name: $APP_NAME"
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>\n    <application#' $MANIFEST
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <uses-permission android:name="android.permission.VIBRATE"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application#' $MANIFEST
+          sed -i 's#<activity#<activity android:showWhenLocked="true" android:turnScreenOn="true"#' $MANIFEST
           sed -i "s#android:label=\"[^\"]*\"#android:label=\"$APP_NAME\"#" $MANIFEST
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle* || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle* || true
+          python3 - <<'EOF'
+          import glob, re
+          for f in glob.glob('android/app/build.gradle*'):
+              t = open(f).read()
+              if 'coreLibraryDesugaring' in t or 'CoreLibraryDesugaring' in t:
+                  continue
+              kts = f.endswith('.kts')
+              flag = 'isCoreLibraryDesugaringEnabled = true' if kts else 'coreLibraryDesugaringEnabled true'
+              t = t.replace('compileOptions {', 'compileOptions {\n        ' + flag, 1)
+              dep = 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' if kts else "coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'"
+              t += '\ndependencies {\n    ' + dep + '\n}\n'
+              open(f, 'w').write(t)
+          EOF
 
       - name: Set app icon
         working-directory: app
