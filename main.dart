@@ -424,7 +424,7 @@ bool _lnReady = false;
 Future<void> initNotifications() async {
   if (_lnReady) return;
   await _ln.initialize(
-    const InitializationSettings(
+    settings: const InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     ),
   );
@@ -446,10 +446,10 @@ Future<void> showCallNotification(Map<String, dynamic> data) async {
   final name = (data['name'] ?? '?').toString();
   final group = data['kind'] == 'group';
   await _ln.show(
-    kCallNotifId,
-    name,
-    group ? 'Incoming group call' : 'Incoming voice call',
-    NotificationDetails(
+    id: kCallNotifId,
+    title: name,
+    body: group ? 'Incoming group call' : 'Incoming voice call',
+    notificationDetails: NotificationDetails(
       android: AndroidNotificationDetails(
         'calls_v1',
         'Calls',
@@ -472,7 +472,7 @@ Future<void> showCallNotification(Map<String, dynamic> data) async {
 
 Future<void> cancelCallNotification() async {
   try {
-    await _ln.cancel(kCallNotifId);
+    await _ln.cancel(id: kCallNotifId);
   } catch (_) {}
 }
 
