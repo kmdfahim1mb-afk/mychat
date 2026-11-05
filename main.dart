@@ -9,7 +9,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:image_picker/image_picker.dart';
@@ -22,6 +24,9 @@ import 'firebase_options.dart';
 
 // অ্যাপের নাম বদলাতে শুধু নিচের লাইনের নামটা বদলান (ইংরেজি অক্ষরে লিখুন)
 const kAppName = 'Alap';
+
+/// কলের পুশ পাঠানোর Cloudflare Worker-এর ঠিকানা। খালি থাকলে অ্যাপ বন্ধ অবস্থায় কল বাজবে না।
+const kCallWorkerUrl = '';
 
 
 // ছবি/ফাইল/ভয়েসের সর্বোচ্চ আকার (Firestore-এর ১ MB সীমার কারণে)
@@ -166,6 +171,59 @@ const Map<String, String> _en = {
   'নতুন ইমেইলে একটা ভেরিফিকেশন লিংক পাঠানো হয়েছে। লিংকে ট্যাপ করলে ইমেইল বদলে যাবে, তারপর নতুন ইমেইল দিয়ে আবার লগইন করুন।':
       'A verification link was sent to the new email. Tap the link to change your email, then log in again with the new email.',
   'ঠিক আছে': 'OK',
+  'নতুন গ্রুপ': 'New group',
+  'গ্রুপের নাম': 'Group name',
+  'গ্রুপ তৈরি করুন': 'Create group',
+  'গ্রুপে কাদের নেবেন বেছে নিন (সর্বোচ্চ ১৯ জন)': 'Choose who to add (up to 19 people)',
+  'গ্রুপের নাম লিখুন': 'Enter a group name',
+  'কমপক্ষে একজনকে বেছে নিন': 'Choose at least one person',
+  'সর্বোচ্চ ১৯ জনকে নেওয়া যায়': 'You can add up to 19 people',
+  'এখনো কোনো গ্রুপ নেই': 'No groups yet',
+  'বন্ধুদের নিয়ে গ্রুপ খুলে একসাথে চ্যাট করুন।': 'Create a group and chat with your friends together.',
+  'গ্রুপ': 'Groups',
+  'গ্রুপ চ্যাট': 'Group chat',
+  'জন সদস্য': 'members',
+  'গ্রুপের তথ্য': 'Group info',
+  'সদস্য': 'Members',
+  'অ্যাডমিন': 'Admin',
+  'সদস্য যোগ করুন': 'Add members',
+  'যোগ করুন': 'Add',
+  'যোগ করার মতো কোনো ফ্রেন্ড নেই': 'No friends left to add',
+  'গ্রুপ ছেড়ে যান': 'Leave group',
+  'গ্রুপটা ছেড়ে গেলে আর মেসেজ দেখতে পাবেন না।': 'If you leave, you will no longer see messages.',
+  'ছেড়ে যান': 'Leave',
+  'গ্রুপ মুছে ফেলুন': 'Delete group',
+  'গ্রুপ ও সব মেসেজ সবার জন্য মুছে যাবে।': 'The group and all messages will be deleted for everyone.',
+  'গ্রুপের নাম বদলান': 'Rename group',
+  'সদস্যকে বাদ দিন': 'Remove member',
+  'গ্রুপ কলে সর্বোচ্চ ৫ জন থাকতে পারে': 'A group call can have at most 5 people',
+  'গ্রুপ কলের জন্য বন্ধু বেছে নিন': 'Pick friends for a group call',
+  'আপনি': 'You',
+  'গ্রুপ কল': 'Group call',
+  'রিং হচ্ছে…': 'Ringing…',
+  'সংযুক্ত': 'Connected',
+  'সংযোগ হয়নি': 'Could not connect',
+  'আপনাকে গ্রুপ কলে ডাকছে': 'is inviting you to a group call',
+  'গ্রুপ কলে কাদের ডাকবেন বেছে নিন (সর্বোচ্চ ৪ জন)':
+      'Choose who to call (up to 4 people)',
+  'গ্রুপ কল শুরু করুন': 'Start group call',
+  'গ্রুপ কল করতে আগে কিছু ফ্রেন্ড যোগ করুন।':
+      'Add some friends first to start a group call.',
+  'সর্বোচ্চ ৪ জনকে ডাকা যায়': 'You can call up to 4 people',
+  'পাসওয়ার্ড ভুলে গেছেন?': 'Forgot password?',
+  'পাসওয়ার্ড রিসেট': 'Reset password',
+  'আপনার ইমেইল দিন। সেখানে পাসওয়ার্ড বদলানোর লিংক পাঠানো হবে।':
+      'Enter your email. A link to reset your password will be sent there.',
+  'লিংক পাঠান': 'Send link',
+  'রিসেট লিংক পাঠানো হয়েছে। ইমেইল (স্প্যাম ফোল্ডারও) দেখুন।':
+      'Reset link sent. Check your email (and spam folder).',
+  'পাসওয়ার্ড পরিবর্তন': 'Change password',
+  'নতুন পাসওয়ার্ড': 'New password',
+  'নতুন পাসওয়ার্ড আবার লিখুন': 'Confirm new password',
+  'দুইবারের নতুন পাসওয়ার্ড মেলেনি': 'The new passwords do not match',
+  'পাসওয়ার্ড বদলানো হয়েছে': 'Password changed',
+  'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।':
+      'Too many attempts. Please try again later.',
   'থিম': 'Theme',
   'রঙ': 'Color',
   'সিস্টেম': 'System',
@@ -189,7 +247,6 @@ const Map<String, String> _en = {
   'প্রোফাইল': 'Profile',
   'চ্যাট': 'Chats',
   'কন্টাক্ট': 'Contacts',
-  'গ্রুপ': 'Groups',
   'সেটিংস': 'Settings',
   'আর কোনো চ্যাট নেই': 'No more chats yet',
   'বন্ধুদের সাথে কথোপকথন শুরু করুন': 'Start a conversation with your friends',
@@ -359,6 +416,138 @@ Future<void> stopRing() async {
 
 // ---------------- সাধারণ সাহায্যকারী ফাংশন ----------------
 
+// ---------------- অ্যাপ বন্ধ থাকলেও কল (পুশ নোটিফিকেশন) ----------------
+final FlutterLocalNotificationsPlugin _ln = FlutterLocalNotificationsPlugin();
+const int kCallNotifId = 7001;
+bool _lnReady = false;
+
+Future<void> initNotifications() async {
+  if (_lnReady) return;
+  await _ln.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
+  );
+  final android = _ln.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>();
+  await android?.createNotificationChannel(const AndroidNotificationChannel(
+    'calls_v1',
+    'Calls',
+    description: 'Incoming call alerts',
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+  ));
+  _lnReady = true;
+}
+
+Future<void> showCallNotification(Map<String, dynamic> data) async {
+  await initNotifications();
+  final name = (data['name'] ?? '?').toString();
+  final group = data['kind'] == 'group';
+  await _ln.show(
+    kCallNotifId,
+    name,
+    group ? 'Incoming group call' : 'Incoming voice call',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        'calls_v1',
+        'Calls',
+        channelDescription: 'Incoming call alerts',
+        importance: Importance.max,
+        priority: Priority.max,
+        category: AndroidNotificationCategory.call,
+        fullScreenIntent: true,
+        ongoing: true,
+        autoCancel: true,
+        timeoutAfter: 45000,
+        visibility: NotificationVisibility.public,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([0, 800, 600, 800, 600, 800]),
+        additionalFlags: Int32List.fromList([4]), // বারবার বাজবে
+      ),
+    ),
+  );
+}
+
+Future<void> cancelCallNotification() async {
+  try {
+    await _ln.cancel(kCallNotifId);
+  } catch (_) {}
+}
+
+@pragma('vm:entry-point')
+Future<void> fcmBackground(RemoteMessage m) async {
+  if (m.data['type'] == 'call') {
+    await showCallNotification(Map<String, dynamic>.from(m.data));
+  }
+}
+
+bool _tokenWatching = false;
+
+/// এই ফোনের পুশ-টোকেন নিজের ইউজারের নামে জমা রাখে (সার্ভার এটা দিয়ে ফোন বাজায়)
+Future<void> registerPushToken() async {
+  try {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return;
+    final msg = FirebaseMessaging.instance;
+    await msg.requestPermission();
+    final android = _ln.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.requestNotificationsPermission();
+    await android?.requestFullScreenIntentPermission();
+    final t = await msg.getToken();
+    if (t != null) {
+      await FirebaseFirestore.instance
+          .collection('pushTokens')
+          .doc(u.uid)
+          .set({'token': t, 'time': FieldValue.serverTimestamp()});
+    }
+    if (!_tokenWatching) {
+      _tokenWatching = true;
+      msg.onTokenRefresh.listen((nt) {
+        final cu = FirebaseAuth.instance.currentUser;
+        if (cu == null) return;
+        FirebaseFirestore.instance
+            .collection('pushTokens')
+            .doc(cu.uid)
+            .set({'token': nt, 'time': FieldValue.serverTimestamp()}).catchError(
+                (_) {});
+      });
+    }
+  } catch (_) {}
+}
+
+Future<void> signOutClean() async {
+  final u = FirebaseAuth.instance.currentUser;
+  if (u != null) {
+    try {
+      await FirebaseFirestore.instance
+          .collection('pushTokens')
+          .doc(u.uid)
+          .delete();
+    } catch (_) {}
+  }
+  await FirebaseAuth.instance.signOut();
+}
+
+/// কল শুরু হলে সার্ভারকে বলে ফোন বাজাতে (type: call | group)
+Future<void> pushRing(String type, String id) async {
+  if (kCallWorkerUrl.isEmpty) return;
+  try {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return;
+    final idToken = await u.getIdToken();
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    final r = await c.postUrl(Uri.parse(kCallWorkerUrl));
+    r.headers.contentType = ContentType.json;
+    r.add(utf8.encode(jsonEncode({'idToken': idToken, 'type': type, 'id': id})));
+    final resp = await r.close().timeout(const Duration(seconds: 10));
+    await resp.drain();
+    c.close();
+  } catch (_) {}
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
@@ -369,6 +558,10 @@ Future<void> main() async {
     deleteSoundOn.value = p.getBool('deleteSound') ?? true;
   } catch (_) {}
   await Firebase.initializeApp(options: firebaseOptions);
+  try {
+    FirebaseMessaging.onBackgroundMessage(fcmBackground);
+    await initNotifications();
+  } catch (_) {}
   runApp(const MyChatApp());
 }
 
@@ -480,6 +673,8 @@ String authMsg(FirebaseAuthException e) {
       return tr('পাসওয়ার্ড খুব ছোট (কমপক্ষে ৬ অক্ষর)');
     case 'invalid-email':
       return tr('ইমেইলটা সঠিক নয়');
+    case 'too-many-requests':
+      return tr('অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।');
     case 'network-request-failed':
       return tr('ইন্টারনেট সংযোগ পরীক্ষা করুন');
   }
@@ -580,6 +775,24 @@ String previewText(Map<String, dynamic> chat) {
 }
 
 /// চ্যাটে মেসেজ পাঠায় এবং চ্যাট তালিকা আপডেট করে
+Future<void> postGroupMessage(String gid, Map<String, dynamic> msg) async {
+  final me = FirebaseAuth.instance.currentUser!;
+  final g = FirebaseFirestore.instance.collection('groups').doc(gid);
+  final a = g.update({
+    ...previewOf(msg),
+    'lastTime': FieldValue.serverTimestamp(),
+    'lastSender': me.uid,
+    'lastName': myName,
+  });
+  final b = g.collection('messages').add({
+    ...msg,
+    'senderId': me.uid,
+    'senderName': myName,
+    'time': FieldValue.serverTimestamp(),
+  });
+  await Future.wait([a, b]);
+}
+
 Future<void> postMessage(
     String otherUid, String otherName, Map<String, dynamic> msg) async {
   final me = FirebaseAuth.instance.currentUser!;
@@ -662,6 +875,51 @@ class _AuthPageState extends State<AuthPage> {
   final _pass = TextEditingController();
   bool _isLogin = true;
   bool _loading = false;
+
+  Future<void> _forgot() async {
+    final c = TextEditingController(text: _email.text.trim());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('পাসওয়ার্ড রিসেট')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(tr('আপনার ইমেইল দিন। সেখানে পাসওয়ার্ড বদলানোর লিংক পাঠানো হবে।')),
+            const SizedBox(height: 12),
+            TextField(
+              controller: c,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                  labelText: tr('ইমেইল'), border: const OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('বাতিল'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('লিংক পাঠান'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final email = c.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _msg(tr('ইমেইলটা সঠিক নয়'));
+      return;
+    }
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      _msg(tr('রিসেট লিংক পাঠানো হয়েছে। ইমেইল (স্প্যাম ফোল্ডারও) দেখুন।'));
+    } on FirebaseAuthException catch (e) {
+      _msg(authMsg(e));
+    } catch (e) {
+      _msg('${tr('ত্রুটি')}: $e');
+    }
+  }
 
   Future<void> _submit() async {
     final email = _email.text.trim();
@@ -774,6 +1032,11 @@ class _AuthPageState extends State<AuthPage> {
                         : Text(_isLogin ? tr('লগইন') : tr('সাইন-আপ')),
                   ),
                 ),
+                if (_isLogin)
+                  TextButton(
+                    onPressed: _forgot,
+                    child: Text(tr('পাসওয়ার্ড ভুলে গেছেন?')),
+                  ),
                 TextButton(
                   onPressed: () => setState(() => _isLogin = !_isLogin),
                   child: Text(_isLogin
@@ -882,6 +1145,7 @@ Future<void> deleteMyAccount(BuildContext context) async {
     }
     // প্রোফাইল ও লগইন অ্যাকাউন্ট
     await db.collection('users').doc(uid).delete();
+    await db.collection('pushTokens').doc(uid).delete().catchError((_) {});
     await user.delete();
     deleted = true;
     playDeleteBeep();
@@ -975,6 +1239,8 @@ class _HomePageState extends State<HomePage> {
   Map<String, String> _friends = {}; // ফ্রেন্ডের uid -> নাম
   Set<String> _outgoing = {}; // যাদের রিকোয়েস্ট পাঠিয়েছি
   Set<String> _incoming = {}; // যারা আমাকে রিকোয়েস্ট পাঠিয়েছে
+  List<Map<String, dynamic>> _groups = []; // আমার গ্রুপগুলো
+  int _gMode = 0; // 0 গ্রুপ তালিকা, 1 গ্রুপ কল
 
   String _q = '';
   bool _searching = false;
@@ -986,6 +1252,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     ensureProfile();
+    registerPushToken();
     final db = FirebaseFirestore.instance;
 
     void onErr(Object e) {
@@ -1056,6 +1323,23 @@ class _HomePageState extends State<HomePage> {
       if (mounted) setState(() => _outgoing = ids);
     }, onError: onErr));
 
+    // আমার গ্রুপগুলো
+    _subs.add(db
+        .collection('groups')
+        .where('members', arrayContains: me.uid)
+        .snapshots()
+        .listen((s) {
+      final l = [
+        for (final d in s.docs) {...d.data(), 'id': d.id}
+      ];
+      l.sort((a, b) {
+        final ta = (a['lastTime'] as Timestamp?)?.millisecondsSinceEpoch ?? 1 << 50;
+        final tb = (b['lastTime'] as Timestamp?)?.millisecondsSinceEpoch ?? 1 << 50;
+        return tb.compareTo(ta);
+      });
+      if (mounted) setState(() => _groups = l);
+    }, onError: onErr));
+
     // আসা ভয়েস কল (অ্যাপ খোলা থাকলে রিং হবে)
     _subs.add(db
         .collection('calls')
@@ -1075,10 +1359,36 @@ class _HomePageState extends State<HomePage> {
         }
         if (!mounted) continue;
         inCall = true;
+        cancelCallNotification();
         final session = CallSession.incoming(c.doc.id, d);
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => CallPage(session: session)),
+        );
+      }
+    }, onError: (_) {}));
+
+    // আসা গ্রুপ কল
+    _subs.add(db
+        .collection('groupCalls')
+        .where('invited', arrayContains: me.uid)
+        .snapshots()
+        .listen((s) {
+      for (final c in s.docChanges) {
+        if (c.type != DocumentChangeType.added) continue;
+        final d = c.doc.data();
+        if (d == null || d['status'] != 'active') continue;
+        final t = (d['time'] as Timestamp?)?.toDate();
+        if (t == null || DateTime.now().difference(t).inSeconds > 45) continue;
+        final joined = List<String>.from(d['joined'] ?? const []);
+        if (joined.contains(me.uid) || inCall) continue;
+        if (!mounted) continue;
+        inCall = true;
+        cancelCallNotification();
+        final call = GroupCall.incoming(c.doc.id, d);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => GroupCallPage(call: call)),
         );
       }
     }, onError: (_) {}));
@@ -1471,13 +1781,193 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _groupsView() => ListView(children: [
+  final Set<String> _gSel = {};
+
+  void _startGroupCall() {
+    if (_gSel.isEmpty) return;
+    if (inCall) {
+      toast(context, tr('অন্য একটা কল চলছে'));
+      return;
+    }
+    final invited = <String, String>{
+      for (final u in _gSel) u: _friends[u] ?? '?'
+    };
+    _gSel.clear();
+    inCall = true;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => GroupCallPage(call: GroupCall.outgoing(invited))),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Widget _groupsView() {
+    final b = brand(context);
+    Widget chip(int i, String label, IconData icon) => Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: i == 0 ? 8 : 0),
+            child: ChoiceChip(
+              selected: _gMode == i,
+              showCheckmark: false,
+              avatar: Icon(icon,
+                  size: 18, color: _gMode == i ? Colors.white : b),
+              label: SizedBox(
+                  width: double.infinity,
+                  child: Text(label, textAlign: TextAlign.center)),
+              labelStyle:
+                  TextStyle(color: _gMode == i ? Colors.white : b),
+              selectedColor: b,
+              onSelected: (_) => setState(() => _gMode = i),
+            ),
+          ),
+        );
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Row(children: [
+            chip(0, tr('গ্রুপ চ্যাট'), Icons.forum),
+            chip(1, tr('গ্রুপ কল'), Icons.call),
+          ]),
+        ),
+        Expanded(child: _gMode == 0 ? _groupList() : _callPicker()),
+      ],
+    );
+  }
+
+  Widget _groupList() {
+    if (_friends.isEmpty && _groups.isEmpty) {
+      return ListView(children: [
         _emptyHint(
-          title: tr('গ্রুপ চ্যাট শীঘ্রই আসছে'),
-          sub: tr('গ্রুপ চ্যাটের ফিচার এখনো তৈরি হয়নি, পরে যোগ হবে।'),
+          title: tr('এখনো কোনো গ্রুপ নেই'),
+          sub: tr('বন্ধুদের নিয়ে গ্রুপ খুলে একসাথে চ্যাট করুন।'),
           button: false,
         ),
       ]);
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(top: 6, bottom: 8),
+            children: [
+              for (final g in _groups)
+                _card(
+                  leading: CircleAvatar(
+                    radius: 28,
+                    backgroundColor: brand(context),
+                    child: const Icon(Icons.groups, color: Colors.white),
+                  ),
+                  title: (g['title'] ?? '').toString(),
+                  time: fmtTime(g['lastTime'] as Timestamp?),
+                  subtitle: _sub(
+                      previewIcon(g),
+                      ((g['lastName'] ?? '').toString().isEmpty
+                              ? ''
+                              : '${g['lastName']}: ') +
+                          previewLabel(g)),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => ChatPage(
+                            groupId: g['id'].toString(),
+                            otherName: (g['title'] ?? '').toString())),
+                  ),
+                ),
+              if (_groups.isEmpty)
+                _emptyHint(
+                  title: tr('এখনো কোনো গ্রুপ নেই'),
+                  sub: tr('বন্ধুদের নিয়ে গ্রুপ খুলে একসাথে চ্যাট করুন।'),
+                  button: false,
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: _friends.isEmpty
+                  ? null
+                  : () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => CreateGroupPage(
+                                friends: Map<String, String>.from(_friends))),
+                      ),
+              icon: const Icon(Icons.group_add),
+              label: Text(tr('নতুন গ্রুপ')),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _callPicker() {
+    if (_friends.isEmpty) {
+      return ListView(children: [
+        _emptyHint(
+          title: tr('গ্রুপ কল'),
+          sub: tr('গ্রুপ কল করতে আগে কিছু ফ্রেন্ড যোগ করুন।'),
+          button: false,
+        ),
+      ]);
+    }
+    final list = _friends.entries.toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(tr('গ্রুপ কলে কাদের ডাকবেন বেছে নিন (সর্বোচ্চ ৪ জন)'),
+              style: TextStyle(color: Theme.of(context).hintColor)),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final f in list)
+                CheckboxListTile(
+                  value: _gSel.contains(f.key),
+                  secondary: _avatar(f.value, 22),
+                  title: Text(f.value),
+                  onChanged: (v) {
+                    setState(() {
+                      if (v == true) {
+                        if (_gSel.length >= kGroupMax - 1) {
+                          toast(context, tr('সর্বোচ্চ ৪ জনকে ডাকা যায়'));
+                        } else {
+                          _gSel.add(f.key);
+                        }
+                      } else {
+                        _gSel.remove(f.key);
+                      }
+                    });
+                  },
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: _gSel.isEmpty ? null : _startGroupCall,
+              icon: const Icon(Icons.groups),
+              label: Text(
+                  '${tr('গ্রুপ কল শুরু করুন')} (${numL('${_gSel.length}')})'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   // ---------- সার্চ ফলাফল ----------
   Widget _action(String uid, String name) {
@@ -1658,7 +2148,7 @@ class _HomePageState extends State<HomePage> {
                             } else if (v == 'lang') {
                               pickLanguage(context);
                             } else if (v == 'logout') {
-                              FirebaseAuth.instance.signOut();
+                              signOutClean();
                             } else if (v == 'delete') {
                               deleteMyAccount(context);
                             }
@@ -2030,7 +2520,9 @@ typedef MsgDoc = QueryDocumentSnapshot<Map<String, dynamic>>;
 class ChatPage extends StatefulWidget {
   final String otherUid;
   final String otherName;
-  const ChatPage({super.key, required this.otherUid, required this.otherName});
+  final String? groupId; // গ্রুপ চ্যাট হলে গ্রুপের আইডি
+  const ChatPage(
+      {super.key, this.otherUid = '', this.otherName = '', this.groupId});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -2047,10 +2539,28 @@ class _ChatPageState extends State<ChatPage> {
   int _secs = 0;
   Timer? _timer;
   String? _recPath;
+  Map<String, dynamic> _g = {};
+  StreamSubscription? _gSub;
+
+  bool get isGroup => widget.groupId != null;
 
   @override
   void initState() {
     super.initState();
+    if (isGroup) {
+      _gSub = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId)
+          .snapshots()
+          .listen((d) {
+        if (!mounted) return;
+        if (!d.exists) {
+          Navigator.maybePop(context);
+          return;
+        }
+        setState(() => _g = d.data() ?? {});
+      }, onError: (_) {});
+    }
     _text.addListener(() {
       final has = _text.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
@@ -2059,16 +2569,20 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _gSub?.cancel();
     _timer?.cancel();
     _rec.dispose();
     _text.dispose();
     super.dispose();
   }
 
-  String get chatId => pairId(me.uid, widget.otherUid);
+  String get chatId =>
+      isGroup ? widget.groupId! : pairId(me.uid, widget.otherUid);
 
   DocumentReference<Map<String, dynamic>> get _chatRef =>
-      FirebaseFirestore.instance.collection('chats').doc(chatId);
+      FirebaseFirestore.instance
+          .collection(isGroup ? 'groups' : 'chats')
+          .doc(chatId);
 
   CollectionReference<Map<String, dynamic>> get _msgs =>
       _chatRef.collection('messages');
@@ -2078,10 +2592,42 @@ class _ChatPageState extends State<ChatPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  Future<void> _post(Map<String, dynamic> msg) =>
-      postMessage(widget.otherUid, widget.otherName, msg);
+  Future<void> _post(Map<String, dynamic> msg) => isGroup
+      ? postGroupMessage(widget.groupId!, msg)
+      : postMessage(widget.otherUid, widget.otherName, msg);
+
+  String get _title =>
+      isGroup ? (_g['title'] ?? widget.otherName).toString() : widget.otherName;
 
   void _call() {
+    if (isGroup) {
+      final mem = List<String>.from(_g['members'] ?? const []);
+      final names = <String, String>{};
+      final raw = _g['names'];
+      if (raw is Map) {
+        raw.forEach((k, v) => names[k.toString()] = v.toString());
+      }
+      final others = mem.where((u) => u != me.uid).toList();
+      if (others.isEmpty) return;
+      if (mem.length > kGroupMax) {
+        _snack(tr('গ্রুপ কলে সর্বোচ্চ ৫ জন থাকতে পারে'));
+        return;
+      }
+      if (inCall) {
+        _snack(tr('অন্য একটা কল চলছে'));
+        return;
+      }
+      inCall = true;
+      final invited = <String, String>{
+        for (final u in others) u: names[u] ?? '?'
+      };
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => GroupCallPage(call: GroupCall.outgoing(invited))),
+      );
+      return;
+    }
     if (inCall) {
       _snack(tr('অন্য একটা কল চলছে'));
       return;
@@ -2466,7 +3012,24 @@ class _ChatPageState extends State<ChatPage> {
       backgroundColor:
           isDark(context) ? const Color(0xFF0B141A) : const Color(0xFFECE5DD),
       appBar: AppBar(
-        title: Text(widget.otherName),
+        title: isGroup
+            ? InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => GroupInfoPage(groupId: widget.groupId!)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(
+                        '${numL('${List.from(_g['members'] ?? const []).length}')} ${tr('জন সদস্য')}',
+                        style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              )
+            : Text(widget.otherName),
         actions: [
           IconButton(
             icon: const Icon(Icons.call),
@@ -2552,6 +3115,20 @@ class _ChatPageState extends State<ChatPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
+                                  if (isGroup && !mine)
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 2),
+                                        child: Text(
+                                            (m['senderName'] ?? '?').toString(),
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: brand(context))),
+                                      ),
+                                    ),
                                   _content(m, docs[i].id),
                                   const SizedBox(height: 2),
                                   Text(
@@ -2580,6 +3157,414 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------- গ্রুপ তৈরি ----------------
+const kGroupBig = 20;
+
+class CreateGroupPage extends StatefulWidget {
+  final Map<String, String> friends; // uid -> নাম
+  const CreateGroupPage({super.key, required this.friends});
+
+  @override
+  State<CreateGroupPage> createState() => _CreateGroupPageState();
+}
+
+class _CreateGroupPageState extends State<CreateGroupPage> {
+  final _title = TextEditingController();
+  final Set<String> _sel = {};
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _create() async {
+    final t = _title.text.trim();
+    if (t.isEmpty) {
+      toast(context, tr('গ্রুপের নাম লিখুন'));
+      return;
+    }
+    if (_sel.isEmpty) {
+      toast(context, tr('কমপক্ষে একজনকে বেছে নিন'));
+      return;
+    }
+    final me = FirebaseAuth.instance.currentUser!;
+    setState(() => _busy = true);
+    try {
+      final ref = FirebaseFirestore.instance.collection('groups').doc();
+      await ref.set({
+        'title': t,
+        'owner': me.uid,
+        'members': [me.uid, ..._sel],
+        'names': {me.uid: myName, for (final u in _sel) u: widget.friends[u] ?? '?'},
+        'lastType': 'text',
+        'lastText': '',
+        'lastName': '',
+        'lastSender': '',
+        'lastTime': FieldValue.serverTimestamp(),
+        'created': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (_) => ChatPage(groupId: ref.id, otherName: t)),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.friends.entries.toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('নতুন গ্রুপ'))),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _title,
+              decoration: InputDecoration(
+                  labelText: tr('গ্রুপের নাম'),
+                  border: const OutlineInputBorder()),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(tr('গ্রুপে কাদের নেবেন বেছে নিন (সর্বোচ্চ ১৯ জন)'),
+                  style: TextStyle(color: Theme.of(context).hintColor)),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              children: [
+                for (final f in list)
+                  CheckboxListTile(
+                    value: _sel.contains(f.key),
+                    secondary: CircleAvatar(
+                      backgroundColor: brand(context),
+                      child: Text(
+                          f.value.isEmpty ? '?' : f.value[0].toUpperCase(),
+                          style: const TextStyle(color: Colors.white)),
+                    ),
+                    title: Text(f.value),
+                    onChanged: (v) {
+                      setState(() {
+                        if (v == true) {
+                          if (_sel.length >= kGroupBig - 1) {
+                            toast(context, tr('সর্বোচ্চ ১৯ জনকে নেওয়া যায়'));
+                          } else {
+                            _sel.add(f.key);
+                          }
+                        } else {
+                          _sel.remove(f.key);
+                        }
+                      });
+                    },
+                  ),
+              ],
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : _create,
+                  icon: const Icon(Icons.group_add),
+                  label: Text('${tr('গ্রুপ তৈরি করুন')} (${numL('${_sel.length}')})'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------- গ্রুপের তথ্য ----------------
+class GroupInfoPage extends StatefulWidget {
+  final String groupId;
+  const GroupInfoPage({super.key, required this.groupId});
+
+  @override
+  State<GroupInfoPage> createState() => _GroupInfoPageState();
+}
+
+class _GroupInfoPageState extends State<GroupInfoPage> {
+  final me = FirebaseAuth.instance.currentUser!;
+  DocumentReference<Map<String, dynamic>> get _ref =>
+      FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+
+  Future<void> _run(Future<void> Function() f) async {
+    try {
+      await f();
+    } catch (e) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+    }
+  }
+
+  Future<void> _rename(String old) async {
+    final c = TextEditingController(text: old);
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('গ্রুপের নাম বদলান')),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: Text(tr('বাতিল'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              child: Text(tr('সেভ করুন'))),
+        ],
+      ),
+    );
+    if (res == null || res.isEmpty || res == old) return;
+    await _run(() => _ref.update({'title': res}));
+  }
+
+  Future<void> _add(List<String> members) async {
+    final db = FirebaseFirestore.instance;
+    Map<String, String> friends = {};
+    try {
+      final s = await db
+          .collection('friendships')
+          .where('members', arrayContains: me.uid)
+          .get();
+      for (final d in s.docs) {
+        final data = d.data();
+        final mem = List<String>.from(data['members'] ?? const []);
+        final other = mem.firstWhere((x) => x != me.uid, orElse: () => '');
+        if (other.isEmpty || members.contains(other)) continue;
+        final names = data['names'];
+        friends[other] =
+            (names is Map ? names[other] : null)?.toString() ?? '?';
+      }
+    } catch (e) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+      return;
+    }
+    if (!mounted) return;
+    if (friends.isEmpty) {
+      toast(context, tr('যোগ করার মতো কোনো ফ্রেন্ড নেই'));
+      return;
+    }
+    final sel = <String>{};
+    final room = kGroupBig - members.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text(tr('সদস্য যোগ করুন')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final f in friends.entries)
+                  CheckboxListTile(
+                    value: sel.contains(f.key),
+                    title: Text(f.value),
+                    onChanged: (v) => setS(() {
+                      if (v == true) {
+                        if (sel.length < room) sel.add(f.key);
+                      } else {
+                        sel.remove(f.key);
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(tr('বাতিল'))),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(tr('যোগ করুন'))),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || sel.isEmpty) return;
+    await _run(() => _ref.update({
+          'members': FieldValue.arrayUnion(sel.toList()),
+          for (final u in sel) 'names.$u': friends[u] ?? '?',
+        }));
+  }
+
+  Future<void> _kick(String uid) async {
+    await _run(() => _ref.update({
+          'members': FieldValue.arrayRemove([uid]),
+          'names.$uid': FieldValue.delete(),
+        }));
+  }
+
+  Future<void> _leave() async {
+    final yes = await confirmDialog(context, tr('গ্রুপ ছেড়ে যান'),
+        tr('গ্রুপটা ছেড়ে গেলে আর মেসেজ দেখতে পাবেন না।'), tr('ছেড়ে যান'));
+    if (!yes) return;
+    try {
+      await _ref.update({'members': FieldValue.arrayRemove([me.uid])});
+      if (!mounted) return;
+      Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+    }
+  }
+
+  Future<void> _deleteGroup() async {
+    final yes = await confirmDialog(context, tr('গ্রুপ মুছে ফেলুন'),
+        tr('গ্রুপ ও সব মেসেজ সবার জন্য মুছে যাবে।'), tr('ডিলিট করুন'));
+    if (!yes) return;
+    try {
+      while (true) {
+        final s = await _ref.collection('messages').limit(300).get();
+        if (s.docs.isEmpty) break;
+        final b = FirebaseFirestore.instance.batch();
+        for (final d in s.docs) {
+          b.delete(d.reference);
+        }
+        await b.commit();
+      }
+      await _ref.delete();
+      if (!mounted) return;
+      Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('গ্রুপের তথ্য'))),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: _ref.snapshots(),
+        builder: (context, snap) {
+          final g = snap.data?.data();
+          if (g == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final members = List<String>.from(g['members'] ?? const []);
+          if (!members.contains(me.uid)) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final names = <String, String>{};
+          final raw = g['names'];
+          if (raw is Map) {
+            raw.forEach((k, v) => names[k.toString()] = v.toString());
+          }
+          final owner = (g['owner'] ?? '').toString();
+          final iAmOwner = owner == me.uid;
+          final title = (g['title'] ?? '').toString();
+          return ListView(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 38,
+                      backgroundColor: brand(context),
+                      child: const Icon(Icons.groups,
+                          size: 40, color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text('${numL('${members.length}')} ${tr('জন সদস্য')}',
+                        style: TextStyle(color: Theme.of(context).hintColor)),
+                  ],
+                ),
+              ),
+              if (iAmOwner)
+                ListTile(
+                  leading: const Icon(Icons.edit),
+                  title: Text(tr('গ্রুপের নাম বদলান')),
+                  onTap: () => _rename(title),
+                ),
+              if (iAmOwner && members.length < kGroupBig)
+                ListTile(
+                  leading: Icon(Icons.person_add, color: brand(context)),
+                  title: Text(tr('সদস্য যোগ করুন')),
+                  onTap: () => _add(members),
+                ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text(tr('সদস্য'),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: brand(context))),
+              ),
+              for (final u in members)
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: brand(context),
+                    child: Text(
+                        (u == me.uid ? myName : (names[u] ?? '?')).isEmpty
+                            ? '?'
+                            : (u == me.uid ? myName : (names[u] ?? '?'))[0]
+                                .toUpperCase(),
+                        style: const TextStyle(color: Colors.white)),
+                  ),
+                  title: Text(u == me.uid
+                      ? '${tr('আপনি')} ($myName)'
+                      : (names[u] ?? '?')),
+                  subtitle: u == owner ? Text(tr('অ্যাডমিন')) : null,
+                  trailing: (iAmOwner && u != me.uid)
+                      ? IconButton(
+                          icon: const Icon(Icons.person_remove,
+                              color: Colors.red),
+                          tooltip: tr('সদস্যকে বাদ দিন'),
+                          onPressed: () => _kick(u),
+                        )
+                      : null,
+                ),
+              const Divider(),
+              if (!iAmOwner)
+                ListTile(
+                  leading: const Icon(Icons.exit_to_app, color: Colors.red),
+                  title: Text(tr('গ্রুপ ছেড়ে যান'),
+                      style: const TextStyle(color: Colors.red)),
+                  onTap: _leave,
+                ),
+              if (iAmOwner)
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: Text(tr('গ্রুপ মুছে ফেলুন'),
+                      style: const TextStyle(color: Colors.red)),
+                  onTap: _deleteGroup,
+                ),
+              const SizedBox(height: 24),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2919,6 +3904,66 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _changePassword() async {
+    final cur = TextEditingController();
+    final n1 = TextEditingController();
+    final n2 = TextEditingController();
+    Widget field(TextEditingController c, String label) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextField(
+            controller: c,
+            obscureText: true,
+            decoration: InputDecoration(
+                labelText: label, border: const OutlineInputBorder()),
+          ),
+        );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('পাসওয়ার্ড পরিবর্তন')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              field(cur, tr('বর্তমান পাসওয়ার্ড')),
+              field(n1, tr('নতুন পাসওয়ার্ড')),
+              field(n2, tr('নতুন পাসওয়ার্ড আবার লিখুন')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('বাতিল'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('সেভ করুন'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final newPass = n1.text.trim();
+    if (newPass.length < 6) {
+      if (mounted) toast(context, tr('পাসওয়ার্ড খুব ছোট (কমপক্ষে ৬ অক্ষর)'));
+      return;
+    }
+    if (newPass != n2.text.trim()) {
+      if (mounted) toast(context, tr('দুইবারের নতুন পাসওয়ার্ড মেলেনি'));
+      return;
+    }
+    try {
+      final u = FirebaseAuth.instance.currentUser!;
+      await u.reauthenticateWithCredential(EmailAuthProvider.credential(
+          email: u.email!, password: cur.text.trim()));
+      await u.updatePassword(newPass);
+      if (mounted) toast(context, tr('পাসওয়ার্ড বদলানো হয়েছে'));
+    } on FirebaseAuthException catch (ex) {
+      if (mounted) toast(context, authMsg(ex));
+    } catch (ex) {
+      if (mounted) toast(context, '${tr('ব্যর্থ হয়েছে')}: $ex');
+    }
+  }
+
   Widget _header(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Text(t,
@@ -2968,6 +4013,11 @@ class _SettingsPageState extends State<SettingsPage> {
             title: Text(tr('ইমেইল পরিবর্তন')),
             subtitle: Text(u?.email ?? ''),
             onTap: _changeEmail,
+          ),
+          ListTile(
+            leading: const Icon(Icons.lock_outline),
+            title: Text(tr('পাসওয়ার্ড পরিবর্তন')),
+            onTap: _changePassword,
           ),
           const Divider(),
           _header('${tr('থিম')} / ${tr('রঙ')}'),
@@ -3025,7 +4075,7 @@ class _SettingsPageState extends State<SettingsPage> {
             title: Text(tr('লগআউট')),
             onTap: () {
               Navigator.of(context).popUntil((r) => r.isFirst);
-              FirebaseAuth.instance.signOut();
+              signOutClean();
             },
           ),
           ListTile(
@@ -3177,6 +4227,7 @@ class CallSession {
         'offer': {'sdp': offer.sdp, 'type': offer.type},
         'time': FieldValue.serverTimestamp(),
       });
+      pushRing('call', ref.id);
       _markReady();
       _listen();
       _timeout = Timer(const Duration(seconds: 45), () {
@@ -3479,6 +4530,538 @@ class _CallPageState extends State<CallPage> {
     );
   }
 }
+
+// ---------------- গ্রুপ ভয়েস কল (সর্বোচ্চ ৫ জন) ----------------
+// প্রত্যেকে প্রত্যেকের সাথে সরাসরি যুক্ত হয় (mesh)। সিগন্যালিং Firestore দিয়ে।
+const kGroupMax = 5;
+
+class _GPeer {
+  rtc.RTCPeerConnection? pc;
+  Future<void>? ready;
+  final List<rtc.RTCIceCandidate> queue = [];
+  bool remoteSet = false;
+  String state = 'connecting'; // connecting | connected
+}
+
+class GroupCall {
+  final DocumentReference<Map<String, dynamic>> ref;
+  final String me = FirebaseAuth.instance.currentUser!.uid;
+  final bool isHost;
+  final List<String> invitedUids; // শুধু হোস্টের জন্য
+  final Map<String, String> names; // uid -> নাম
+  final String hostName;
+
+  /// incoming | active | ended
+  final ValueNotifier<int> tick = ValueNotifier<int>(0);
+  String state;
+  String? error;
+  bool muted = false;
+  bool speaker = false;
+  DateTime? startedAt;
+  List<String> members = [];
+  Set<String> joined = {};
+
+  final Map<String, _GPeer> _peers = {};
+  final Map<String, List<rtc.RTCIceCandidate>> _early = {};
+  rtc.MediaStream? _local;
+  final List<StreamSubscription> _subs = [];
+  Timer? _aloneTimer;
+  bool _finished = false;
+
+  GroupCall._(this.ref, this.isHost, this.invitedUids, this.names,
+      this.hostName, this.state);
+
+  factory GroupCall.outgoing(Map<String, String> invited) {
+    final me = FirebaseAuth.instance.currentUser!.uid;
+    final ref = FirebaseFirestore.instance.collection('groupCalls').doc();
+    final names = {me: myName, ...invited};
+    final g = GroupCall._(
+        ref, true, invited.keys.toList(), names, myName, 'active');
+    g.members = [me, ...invited.keys];
+    return g;
+  }
+
+  factory GroupCall.incoming(String id, Map<String, dynamic> d) {
+    final ref = FirebaseFirestore.instance.collection('groupCalls').doc(id);
+    final names = <String, String>{};
+    final raw = d['names'];
+    if (raw is Map) {
+      raw.forEach((k, v) => names[k.toString()] = v.toString());
+    }
+    final g = GroupCall._(ref, false, const [], names,
+        (d['hostName'] ?? '?').toString(), 'incoming');
+    g.members = List<String>.from(d['members'] ?? const []);
+    g.joined = Set<String>.from(d['joined'] ?? const []);
+    return g;
+  }
+
+  bool get finished => _finished;
+  String nameOf(String uid) => uid == me ? myName : (names[uid] ?? '?');
+  void _ping() => tick.value++;
+
+  Future<void> _openMic() async {
+    _local = await rtc.navigator.mediaDevices
+        .getUserMedia({'audio': true, 'video': false});
+  }
+
+  /// হোস্ট: কল শুরু
+  Future<void> start() async {
+    try {
+      await _openMic();
+      await ref.set({
+        'host': me,
+        'hostName': myName,
+        'members': members,
+        'invited': invitedUids,
+        'names': names,
+        'joined': [me],
+        'status': 'active',
+        'time': FieldValue.serverTimestamp(),
+      });
+      pushRing('group', ref.id);
+      joined = {me};
+      startedAt = DateTime.now();
+      _listen();
+      _ping();
+    } catch (e) {
+      error = '$e';
+      _finish();
+    }
+  }
+
+  /// আমন্ত্রিত: কলে যোগ দেয়
+  Future<void> join() async {
+    try {
+      stopRing();
+      state = 'active';
+      _ping();
+      await _openMic();
+      await ref.update({
+        'joined': FieldValue.arrayUnion([me])
+      });
+      startedAt = DateTime.now();
+      _listen();
+    } catch (e) {
+      error = '$e';
+      _finish();
+    }
+  }
+
+  void _listen() {
+    _subs.add(ref.snapshots().listen(_onDoc, onError: (_) {}));
+    _subs.add(ref
+        .collection('signals')
+        .where('to', isEqualTo: me)
+        .snapshots()
+        .listen(_onSignals, onError: (_) {}));
+  }
+
+  void _onDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
+    if (_finished) return;
+    if (!snap.exists || snap.data()?['status'] == 'ended') {
+      _finish();
+      return;
+    }
+    final d = snap.data()!;
+    joined = Set<String>.from(d['joined'] ?? const []);
+    members = List<String>.from(d['members'] ?? members);
+    // যার uid ছোট সে অফার পাঠায়
+    for (final u in joined) {
+      if (u == me || _peers.containsKey(u)) continue;
+      if (me.compareTo(u) < 0) _connectTo(u);
+    }
+    // যারা বেরিয়ে গেছে তাদের সংযোগ বন্ধ
+    for (final u in _peers.keys.toList()) {
+      if (!joined.contains(u)) _drop(u);
+    }
+    // একা থাকলে ৬০ সেকেন্ড পরে নিজে থেকে শেষ
+    if (joined.length <= 1) {
+      _aloneTimer ??= Timer(const Duration(seconds: 60), () {
+        if (joined.length <= 1) leave();
+      });
+    } else {
+      _aloneTimer?.cancel();
+      _aloneTimer = null;
+    }
+    _ping();
+  }
+
+  _GPeer _newPeer(String u) {
+    final p = _GPeer();
+    _peers[u] = p;
+    p.ready = () async {
+      final pc = await rtc.createPeerConnection(
+          {'iceServers': kIceServers, 'sdpSemantics': 'unified-plan'});
+      p.pc = pc;
+      for (final t in _local?.getAudioTracks() ?? <rtc.MediaStreamTrack>[]) {
+        await pc.addTrack(t, _local!);
+      }
+      pc.onIceCandidate = (c) {
+        if (c.candidate == null) return;
+        _signal(u, 'cand', {
+          'candidate': c.candidate,
+          'sdpMid': c.sdpMid,
+          'sdpMLineIndex': c.sdpMLineIndex,
+        });
+      };
+      pc.onConnectionState = (st) {
+        if (_finished) return;
+        if (st == rtc.RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          p.state = 'connected';
+          rtc.Helper.setSpeakerphoneOn(speaker);
+          _ping();
+        } else if (st ==
+            rtc.RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+          p.state = 'failed';
+          _ping();
+        }
+      };
+    }();
+    final early = _early.remove(u);
+    if (early != null) p.queue.addAll(early);
+    return p;
+  }
+
+  Future<void> _signal(String to, String kind, Map<String, dynamic> data) async {
+    try {
+      await ref.collection('signals').add({
+        'from': me,
+        'to': to,
+        'kind': kind,
+        'data': data,
+        'time': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _connectTo(String u) async {
+    final p = _newPeer(u);
+    try {
+      await p.ready;
+      final pc = p.pc!;
+      final offer = await pc.createOffer({'offerToReceiveAudio': 1});
+      await pc.setLocalDescription(offer);
+      await _signal(u, 'offer', {'sdp': offer.sdp, 'type': offer.type});
+    } catch (e) {
+      error = '$e';
+      _ping();
+    }
+  }
+
+  void _onSignals(QuerySnapshot<Map<String, dynamic>> snap) {
+    for (final c in snap.docChanges) {
+      if (c.type != DocumentChangeType.added) continue;
+      final m = c.doc.data();
+      if (m == null) continue;
+      final from = (m['from'] ?? '').toString();
+      final kind = m['kind'];
+      final data = Map<String, dynamic>.from(m['data'] ?? {});
+      if (from.isEmpty || _finished) continue;
+      if (kind == 'offer') {
+        _onOffer(from, data);
+      } else if (kind == 'answer') {
+        _onAnswer(from, data);
+      } else if (kind == 'cand') {
+        final cand = rtc.RTCIceCandidate(data['candidate'] as String?,
+            data['sdpMid'] as String?, data['sdpMLineIndex'] as int?);
+        final p = _peers[from];
+        if (p == null) {
+          _early.putIfAbsent(from, () => []).add(cand);
+        } else if (p.remoteSet) {
+          p.pc?.addCandidate(cand).catchError((_) {});
+        } else {
+          p.queue.add(cand);
+        }
+      }
+      c.doc.reference.delete().catchError((_) {});
+    }
+  }
+
+  Future<void> _onOffer(String from, Map<String, dynamic> o) async {
+    _drop(from);
+    final p = _newPeer(from);
+    try {
+      await p.ready;
+      final pc = p.pc!;
+      await pc.setRemoteDescription(rtc.RTCSessionDescription(o['sdp'], o['type']));
+      p.remoteSet = true;
+      for (final c in p.queue) {
+        pc.addCandidate(c).catchError((_) {});
+      }
+      p.queue.clear();
+      final ans = await pc.createAnswer({'offerToReceiveAudio': 1});
+      await pc.setLocalDescription(ans);
+      await _signal(from, 'answer', {'sdp': ans.sdp, 'type': ans.type});
+    } catch (e) {
+      error = '$e';
+      _ping();
+    }
+  }
+
+  Future<void> _onAnswer(String from, Map<String, dynamic> a) async {
+    final p = _peers[from];
+    if (p == null) return;
+    try {
+      await p.ready;
+      final pc = p.pc!;
+      await pc.setRemoteDescription(rtc.RTCSessionDescription(a['sdp'], a['type']));
+      p.remoteSet = true;
+      for (final c in p.queue) {
+        pc.addCandidate(c).catchError((_) {});
+      }
+      p.queue.clear();
+    } catch (e) {
+      error = '$e';
+      _ping();
+    }
+  }
+
+  void _drop(String u) {
+    final p = _peers.remove(u);
+    try {
+      p?.pc?.close();
+    } catch (_) {}
+  }
+
+  String statusOf(String uid) {
+    if (uid == me) return 'me';
+    if (!joined.contains(uid)) return 'ringing';
+    return _peers[uid]?.state ?? 'connecting';
+  }
+
+  /// কল ছেড়ে যাওয়া। শেষজন গেলে কলের ডকুমেন্ট মুছে যায়।
+  Future<void> leave() async {
+    if (_finished) return;
+    final wasJoined = state == 'active';
+    _finish();
+    if (!wasJoined) return;
+    try {
+      await ref.update({
+        'joined': FieldValue.arrayRemove([me])
+      });
+      final s = await ref.get();
+      final left = List<String>.from(s.data()?['joined'] ?? const []);
+      if (left.isEmpty) await ref.delete();
+    } catch (_) {}
+  }
+
+  void _finish() {
+    if (_finished) return;
+    _finished = true;
+    _aloneTimer?.cancel();
+    stopRing();
+    for (final s in _subs) {
+      s.cancel();
+    }
+    for (final u in _peers.keys.toList()) {
+      _drop(u);
+    }
+    try {
+      for (final t in _local?.getTracks() ?? <rtc.MediaStreamTrack>[]) {
+        t.stop();
+      }
+      _local?.dispose();
+    } catch (_) {}
+    state = 'ended';
+    _ping();
+  }
+
+  void toggleMute() {
+    muted = !muted;
+    for (final t in _local?.getAudioTracks() ?? <rtc.MediaStreamTrack>[]) {
+      t.enabled = !muted;
+    }
+    _ping();
+  }
+
+  Future<void> toggleSpeaker() async {
+    speaker = !speaker;
+    try {
+      await rtc.Helper.setSpeakerphoneOn(speaker);
+    } catch (_) {}
+    _ping();
+  }
+}
+
+class GroupCallPage extends StatefulWidget {
+  final GroupCall call;
+  const GroupCallPage({super.key, required this.call});
+
+  @override
+  State<GroupCallPage> createState() => _GroupCallPageState();
+}
+
+class _GroupCallPageState extends State<GroupCallPage> {
+  Timer? _tick;
+  Timer? _ringTimeout;
+  bool _popped = false;
+  GroupCall get g => widget.call;
+
+  @override
+  void initState() {
+    super.initState();
+    g.tick.addListener(_onTick);
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+    if (g.isHost) {
+      g.start();
+    } else {
+      startRing();
+      _ringTimeout = Timer(const Duration(seconds: 45), () {
+        if (g.state == 'incoming') g.leave();
+      });
+    }
+  }
+
+  void _onTick() {
+    if (g.state == 'ended' && !_popped) {
+      _popped = true;
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    g.tick.removeListener(_onTick);
+    _tick?.cancel();
+    _ringTimeout?.cancel();
+    inCall = false;
+    if (!g.finished) g.leave();
+    stopRing();
+    super.dispose();
+  }
+
+  Widget _btn(IconData icon, Color bg, String label, VoidCallback onTap) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: 30,
+          backgroundColor: bg,
+          child: IconButton(
+            iconSize: 28,
+            icon: Icon(icon, color: Colors.white),
+            onPressed: onTap,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: const TextStyle(color: Colors.white70)),
+      ],
+    );
+  }
+
+  String _label(String uid) {
+    final st = g.statusOf(uid);
+    if (st == 'me') return tr('আপনি');
+    if (st == 'ringing') return tr('রিং হচ্ছে…');
+    if (st == 'connected') return tr('সংযুক্ত');
+    if (st == 'failed') return tr('সংযোগ হয়নি');
+    return tr('সংযুক্ত হচ্ছে…');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = Color.alphaBlend(Colors.black54, brand(context));
+    final incoming = g.state == 'incoming';
+    final secs = g.startedAt == null
+        ? 0
+        : DateTime.now().difference(g.startedAt!).inSeconds;
+    final subtitle = incoming
+        ? '${g.hostName} ${tr('আপনাকে গ্রুপ কলে ডাকছে')}'
+        : g.state == 'ended'
+            ? (g.error != null ? tr('কল করা যায়নি') : tr('কল শেষ'))
+            : clock(secs);
+    final buttons = incoming
+        ? [
+            _btn(Icons.call_end, Colors.red, tr('কল কাটুন'), () => g.leave()),
+            _btn(Icons.call, Colors.green, tr('কল ধরুন'), () {
+              _ringTimeout?.cancel();
+              g.join();
+            }),
+          ]
+        : g.state == 'ended'
+            ? <Widget>[]
+            : [
+                _btn(g.muted ? Icons.mic_off : Icons.mic,
+                    g.muted ? Colors.white38 : Colors.white24, tr('মিউট'),
+                    () => g.toggleMute()),
+                _btn(Icons.call_end, Colors.red, tr('কল কাটুন'),
+                    () => g.leave()),
+                _btn(Icons.volume_up,
+                    g.speaker ? Colors.white38 : Colors.white24, tr('স্পিকার'),
+                    () => g.toggleSpeaker()),
+              ];
+    return Scaffold(
+      backgroundColor: bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 28),
+            Text(tr('গ্রুপ কল'),
+                style: const TextStyle(
+                    fontSize: 24,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text(subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.white70)),
+            if (g.error != null)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(g.error!,
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.white54)),
+              ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView(
+                children: [
+                  for (final u in g.members)
+                    ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.white24,
+                        child: Text(
+                            g.nameOf(u).isEmpty
+                                ? '?'
+                                : g.nameOf(u)[0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white)),
+                      ),
+                      title: Text(g.nameOf(u),
+                          style: const TextStyle(color: Colors.white)),
+                      subtitle: incoming
+                          ? null
+                          : Text(_label(u),
+                              style: TextStyle(
+                                  color: g.statusOf(u) == 'connected' ||
+                                          g.statusOf(u) == 'me'
+                                      ? Colors.greenAccent
+                                      : Colors.white60)),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: buttons,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 // ---------------- Alap-এর কাগজের প্লেন আইকন ----------------
 class PlaneLogo extends StatelessWidget {

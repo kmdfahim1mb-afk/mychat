@@ -20,6 +20,8 @@ dependencies:
   open_filex: '>=4.5.0'
   shared_preferences: '>=2.2.0'
   flutter_webrtc: '>=0.11.0'
+  firebase_messaging: '>=15.1.0'
+  flutter_local_notifications: '>=18.0.0'
 
 flutter:
   uses-material-design: true
