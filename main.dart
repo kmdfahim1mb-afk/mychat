@@ -26,7 +26,7 @@ import 'firebase_options.dart';
 const kAppName = 'Alap';
 
 /// কলের পুশ পাঠানোর Cloudflare Worker-এর ঠিকানা। খালি থাকলে অ্যাপ বন্ধ অবস্থায় কল বাজবে না।
-const kCallWorkerUrl = '';
+const kCallWorkerUrl = 'https://raspy-surf-cfe5.kmdfahim1mb.workers.dev';
 
 
 // ছবি/ফাইল/ভয়েসের সর্বোচ্চ আকার (Firestore-এর ১ MB সীমার কারণে)
