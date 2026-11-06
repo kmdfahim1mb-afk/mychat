@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
+import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -171,6 +172,19 @@ const Map<String, String> _en = {
   'নতুন ইমেইলে একটা ভেরিফিকেশন লিংক পাঠানো হয়েছে। লিংকে ট্যাপ করলে ইমেইল বদলে যাবে, তারপর নতুন ইমেইল দিয়ে আবার লগইন করুন।':
       'A verification link was sent to the new email. Tap the link to change your email, then log in again with the new email.',
   'ঠিক আছে': 'OK',
+  'রিংটোন': 'Ringtone',
+  'ক্লাসিক': 'Classic',
+  'নরম ঘণ্টা': 'Soft chime',
+  'ডিজিটাল বিপ': 'Digital beep',
+  'ক্রমশ উঁচু': 'Rising tone',
+  'ফোন থেকে বাছুন': 'Pick from phone',
+  'নিজের বাছাই করা অডিও': 'My own audio',
+  'অডিও বাছা যায়নি': 'Could not pick the audio',
+  'অ্যাপ খোলা থাকলে এই রিংটোন বাজবে। অ্যাপ বন্ধ থাকলে ফোনের সেটিংসের (অ্যাপস > Alap > নোটিফিকেশন > Calls > সাউন্ড) রিংটোন বাজবে।':
+      'This ringtone plays while the app is open. When the app is closed, the sound set in phone settings (Apps > Alap > Notifications > Calls > Sound) plays.',
+  'ছবি সেভ করুন': 'Save image',
+  'ছবি গ্যালারিতে সেভ হয়েছে': 'Image saved to gallery',
+  'ছবি সেভ করা যায়নি': 'Could not save the image',
   'নতুন গ্রুপ': 'New group',
   'গ্রুপের নাম': 'Group name',
   'গ্রুপ তৈরি করুন': 'Create group',
@@ -268,6 +282,8 @@ const kDefaultGreen = Color(0xFF075E54);
 final ValueNotifier<int> themeSeed = ValueNotifier<int>(0xFF075E54);
 final ValueNotifier<String> themeModeN = ValueNotifier<String>('system');
 final ValueNotifier<bool> deleteSoundOn = ValueNotifier<bool>(true);
+final ValueNotifier<String> ringToneN = ValueNotifier<String>('classic');
+String ringCustomPath = '';
 
 const kThemeColors = <int>[
   0xFF075E54, // সবুজ
@@ -303,6 +319,11 @@ Future<void> setThemeColor(int c) async {
 Future<void> setThemeMode(String m) async {
   themeModeN.value = m;
   await savePref('themeMode', m);
+}
+
+Future<void> setRingTone(String k) async {
+  ringToneN.value = k;
+  await savePref('ringTone', k);
 }
 
 Future<void> setDeleteSound(bool v) async {
@@ -369,7 +390,6 @@ Future<String> _wavFile(String name, List<List<double>> parts) async {
 bool inCall = false;
 
 String? _beepPath;
-String? _ringPath;
 AudioPlayer? _ringPlayer;
 
 /// ডিলিট করলে ছোট্ট একটা নরম "বিপ" (নিচের দিকে নামা টোন, বাদ্যযন্ত্রের মতো নয়)
@@ -387,19 +407,75 @@ Future<void> playDeleteBeep() async {
 }
 
 /// কলের রিং (ফোনের মতো দুই বিপ, থেমে থেমে)
-Future<void> startRing() async {
+/// রিংটোনের ধরন (নাম -> [শুরুর হার্জ, শেষের হার্জ, সময়, জোর])
+const kRingTones = <String, List<List<double>>>{
+  'classic': [
+    [425, 425, 0.4, 0.25],
+    [0, 0, 0.2, 0],
+    [425, 425, 0.4, 0.25],
+    [0, 0, 1.8, 0],
+  ],
+  'soft': [
+    [660, 660, 0.25, 0.3],
+    [0, 0, 0.05, 0],
+    [880, 880, 0.35, 0.3],
+    [0, 0, 1.6, 0],
+  ],
+  'digital': [
+    [1000, 1000, 0.12, 0.3],
+    [0, 0, 0.08, 0],
+    [1000, 1000, 0.12, 0.3],
+    [0, 0, 0.08, 0],
+    [1000, 1000, 0.12, 0.3],
+    [0, 0, 0.08, 0],
+    [1000, 1000, 0.12, 0.3],
+    [0, 0, 1.3, 0],
+  ],
+  'rising': [
+    [500, 900, 0.5, 0.3],
+    [0, 0, 0.1, 0],
+    [500, 900, 0.5, 0.3],
+    [0, 0, 1.5, 0],
+  ],
+};
+
+Future<String> _ringFileFor(String key) async {
+  if (key == 'custom') {
+    if (ringCustomPath.isNotEmpty && await File(ringCustomPath).exists()) {
+      return ringCustomPath;
+    }
+    key = 'classic';
+  }
+  final parts = kRingTones[key] ?? kRingTones['classic']!;
+  return _wavFile('alap_ring_${key}_v1.wav', parts);
+}
+
+/// কলের রিং। incoming = true হলে (কল আসছে) নিজের বাছাই করা রিংটোন বাজে,
+/// নইলে (আমি কল করছি) সাধারণ রিংব্যাক টোন।
+Future<void> startRing({bool incoming = false}) async {
   try {
     await stopRing();
-    _ringPath ??= await _wavFile('alap_ring_v1.wav', [
-      [425, 425, 0.4, 0.25],
-      [0, 0, 0.2, 0],
-      [425, 425, 0.4, 0.25],
-      [0, 0, 1.8, 0],
-    ]);
+    final path = await _ringFileFor(incoming ? ringToneN.value : 'classic');
     final p = AudioPlayer();
     _ringPlayer = p;
     await p.setReleaseMode(ReleaseMode.loop);
-    await p.play(DeviceFileSource(_ringPath!));
+    await p.play(DeviceFileSource(path));
+  } catch (_) {}
+}
+
+/// সেটিংসে রিংটোন শুনে দেখা (কয়েক সেকেন্ড বাজে)
+Future<void> previewRingTone(String key) async {
+  if (inCall) return;
+  try {
+    await stopRing();
+    final path = await _ringFileFor(key);
+    final p = AudioPlayer();
+    _ringPlayer = p;
+    await p.setReleaseMode(ReleaseMode.loop);
+    await p.play(DeviceFileSource(path));
+    Future.delayed(const Duration(seconds: 5), () {
+      if (identical(_ringPlayer, p) && !inCall) stopRing();
+    });
   } catch (_) {}
 }
 
@@ -556,6 +632,8 @@ Future<void> main() async {
     themeSeed.value = p.getInt('themeSeed') ?? 0xFF075E54;
     themeModeN.value = p.getString('themeMode') ?? 'system';
     deleteSoundOn.value = p.getBool('deleteSound') ?? true;
+    ringToneN.value = p.getString('ringTone') ?? 'classic';
+    ringCustomPath = p.getString('ringCustom') ?? '';
   } catch (_) {}
   await Firebase.initializeApp(options: firebaseOptions);
   try {
@@ -3629,6 +3707,24 @@ class ImageViewPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: tr('ছবি সেভ করুন'),
+            onPressed: () async {
+              try {
+                await Gal.putImageBytes(bytes);
+                if (context.mounted) {
+                  toast(context, tr('ছবি গ্যালারিতে সেভ হয়েছে'));
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  toast(context, '${tr('ছবি সেভ করা যায়নি')}: $e');
+                }
+              }
+            },
+          ),
+        ],
       ),
       body: Center(
         child: InteractiveViewer(
@@ -3781,6 +3877,102 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  String _ringName(String k) {
+    switch (k) {
+      case 'soft':
+        return tr('নরম ঘণ্টা');
+      case 'digital':
+        return tr('ডিজিটাল বিপ');
+      case 'rising':
+        return tr('ক্রমশ উঁচু');
+      case 'custom':
+        return tr('নিজের বাছাই করা অডিও');
+      default:
+        return tr('ক্লাসিক');
+    }
+  }
+
+  Future<void> _pickCustomRing() async {
+    try {
+      final xf = await openFile(acceptedTypeGroups: [
+        const XTypeGroup(
+          label: 'audio',
+          extensions: ['mp3', 'wav', 'm4a', 'ogg', 'aac', 'opus'],
+          mimeTypes: ['audio/*'],
+        ),
+      ]);
+      if (xf == null) return;
+      final dir = await getApplicationDocumentsDirectory();
+      final dot = xf.name.lastIndexOf('.');
+      final ext = dot >= 0 ? xf.name.substring(dot) : '.mp3';
+      final dest = File('${dir.path}/my_ringtone$ext');
+      await dest.writeAsBytes(await xf.readAsBytes());
+      ringCustomPath = dest.path;
+      await savePref('ringCustom', dest.path);
+      await setRingTone('custom');
+      previewRingTone('custom');
+    } catch (e) {
+      if (mounted) toast(context, '${tr('অডিও বাছা যায়নি')}: $e');
+    }
+  }
+
+  Future<void> _pickRingtone() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          Widget item(String k) => ListTile(
+                title: Text(_ringName(k)),
+                trailing: ringToneN.value == k
+                    ? Icon(Icons.check_circle, color: brand(context))
+                    : null,
+                onTap: () async {
+                  await setRingTone(k);
+                  previewRingTone(k);
+                  setS(() {});
+                },
+              );
+          return AlertDialog(
+            title: Text(tr('রিংটোন')),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  item('classic'),
+                  item('soft'),
+                  item('digital'),
+                  item('rising'),
+                  if (ringCustomPath.isNotEmpty) item('custom'),
+                  ListTile(
+                    leading: const Icon(Icons.folder_open),
+                    title: Text(tr('ফোন থেকে বাছুন')),
+                    onTap: () async {
+                      await _pickCustomRing();
+                      setS(() {});
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    tr('অ্যাপ খোলা থাকলে এই রিংটোন বাজবে। অ্যাপ বন্ধ থাকলে ফোনের সেটিংসের (অ্যাপস > Alap > নোটিফিকেশন > Calls > সাউন্ড) রিংটোন বাজবে।'),
+                    style: TextStyle(
+                        fontSize: 12, color: Theme.of(context).hintColor),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(tr('ঠিক আছে'))),
+            ],
+          );
+        },
+      ),
+    );
+    await stopRing();
+    if (mounted) setState(() {});
+  }
+
   Future<void> _changeName() async {
     final c = TextEditingController(text: myName);
     final res = await showDialog<String>(
@@ -4068,6 +4260,12 @@ class _SettingsPageState extends State<SettingsPage> {
               setDeleteSound(v);
               setState(() {});
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.ring_volume),
+            title: Text(tr('রিংটোন')),
+            subtitle: Text(_ringName(ringToneN.value)),
+            onTap: _pickRingtone,
           ),
           const Divider(),
           ListTile(
@@ -4400,7 +4598,7 @@ class _CallPageState extends State<CallPage> {
     if (s.isCaller) {
       s.start();
     } else {
-      startRing();
+      startRing(incoming: true);
     }
   }
 
@@ -4907,7 +5105,7 @@ class _GroupCallPageState extends State<GroupCallPage> {
     if (g.isHost) {
       g.start();
     } else {
-      startRing();
+      startRing(incoming: true);
       _ringTimeout = Timer(const Duration(seconds: 45), () {
         if (g.state == 'incoming') g.leave();
       });
