@@ -10,11 +10,13 @@ import 'package:file_selector/file_selector.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:gal/gal.dart';
+import 'package:image/image.dart' as imglib;
 import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -32,6 +34,188 @@ const kCallWorkerUrl = 'https://raspy-surf-cfe5.kmdfahim1mb.workers.dev';
 
 // ছবি/ফাইল/ভয়েসের সর্বোচ্চ আকার (Firestore-এর ১ MB সীমার কারণে)
 const kMaxBytes = 700000;
+
+/// অ্যাপের সংস্করণ (ডিভাইস গণনায় আপডেটের সংস্করণ দেখাতে)
+const kAppVersion = '1.5.0';
+
+/// ছবি ছোট করার ধাপ: আগে বড় মাপ ও ভালো মান দিয়ে চেষ্টা, না হলে ধাপে ধাপে কমানো।
+Uint8List shrinkImage(Uint8List src) {
+  final decoded = imglib.decodeImage(src);
+  if (decoded == null) return src;
+  final im = imglib.bakeOrientation(decoded);
+  const steps = <List<int>>[
+    [2000, 85],
+    [1600, 80],
+    [1280, 75],
+    [1024, 70],
+    [800, 60],
+  ];
+  Uint8List best = src;
+  for (final st in steps) {
+    final r = im.width > st[0] ? imglib.copyResize(im, width: st[0]) : im;
+    final out = Uint8List.fromList(imglib.encodeJpg(r, quality: st[1]));
+    best = out;
+    if (out.length <= kMaxBytes) return out;
+  }
+  return best;
+}
+
+/// a নতুন সংস্করণ b-এর চেয়ে বড় কি না (যেমন 1.10.0 > 1.9.0)
+bool isNewerVersion(String a, String b) {
+  List<int> parse(String v) => [
+        for (final p in v.split('.'))
+          int.tryParse(p.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0
+      ];
+  final x = parse(a), y = parse(b);
+  for (var i = 0; i < 4; i++) {
+    final xi = i < x.length ? x[i] : 0;
+    final yi = i < y.length ? y[i] : 0;
+    if (xi != yi) return xi > yi;
+  }
+  return false;
+}
+
+/// অ্যাডমিনের পাঠানো আপডেট: APK নামিয়ে ইনস্টল স্ক্রিন খোলে।
+class UpdateDialog extends StatefulWidget {
+  final String version;
+  final String notes;
+  final String url;
+  final bool force;
+  const UpdateDialog(
+      {super.key,
+      required this.version,
+      required this.notes,
+      required this.url,
+      required this.force});
+
+  @override
+  State<UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<UpdateDialog> {
+  double? _p;
+  bool _busy = false;
+  String? _err;
+
+  Future<void> _go() async {
+    setState(() {
+      _busy = true;
+      _err = null;
+      _p = 0;
+    });
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/alap_update.apk');
+      if (await f.exists()) await f.delete();
+      final c = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+      final req = await c.getUrl(Uri.parse(widget.url));
+      final resp = await req.close();
+      if (resp.statusCode != 200) {
+        c.close();
+        throw 'HTTP ${resp.statusCode}';
+      }
+      final total = resp.contentLength;
+      var got = 0;
+      final sink = f.openWrite();
+      await for (final chunk in resp) {
+        sink.add(chunk);
+        got += chunk.length;
+        if (total > 0 && mounted) setState(() => _p = got / total);
+      }
+      await sink.close();
+      c.close();
+      final r = await OpenFilex.open(f.path,
+          type: 'application/vnd.android.package-archive');
+      if (r.type != ResultType.done) throw r.message;
+      if (mounted) setState(() => _busy = false);
+    } catch (e) {
+      await Clipboard.setData(ClipboardData(text: widget.url));
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _err =
+              '${tr('ইনস্টল শুরু করা যায়নি')}: $e\n${tr('ডাউনলোড লিংক কপি হয়েছে, Chrome-এ পেস্ট করে নামান।')}';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !widget.force,
+      child: AlertDialog(
+        title: Text('${tr('নতুন আপডেট')} ${numL(widget.version)}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.notes.isNotEmpty) Text(widget.notes),
+              if (widget.force) ...[
+                const SizedBox(height: 8),
+                Text(tr('এই আপডেট করা জরুরি।'),
+                    style: const TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.bold)),
+              ],
+              const SizedBox(height: 10),
+              Text(tr('ডাউনলোড শেষ হলে ইনস্টল স্ক্রিন আসবে, সেখানে Install চাপুন।'),
+                  style: TextStyle(
+                      fontSize: 12, color: Theme.of(context).hintColor)),
+              if (_busy) ...[
+                const SizedBox(height: 12),
+                Text(tr('ডাউনলোড হচ্ছে…')),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(value: (_p ?? 0) > 0 ? _p : null),
+              ],
+              if (_err != null) ...[
+                const SizedBox(height: 10),
+                Text(_err!,
+                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (!widget.force && !_busy)
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(tr('পরে'))),
+          FilledButton(
+              onPressed: _busy ? null : _go, child: Text(tr('আপডেট'))),
+        ],
+      ),
+    );
+  }
+}
+
+/// এই ফোনের নিজস্ব আইডি (আপডেটে একই থাকে, তাই একই ফোন একবারই গোনা হয়)।
+/// অ্যাপ ডিলিট করে নতুন ইনস্টল দিলে নতুন আইডি হয়।
+Future<void> registerInstall() async {
+  try {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return;
+    final p = await SharedPreferences.getInstance();
+    var id = p.getString('deviceId') ?? '';
+    if (id.isEmpty) {
+      final r = math.Random.secure();
+      id = List.generate(24, (_) => r.nextInt(16).toRadixString(16)).join();
+      await p.setString('deviceId', id);
+    }
+    var first = p.getInt('installTime') ?? 0;
+    if (first == 0) {
+      first = DateTime.now().millisecondsSinceEpoch;
+      await p.setInt('installTime', first);
+    }
+    await FirebaseFirestore.instance.collection('installs').doc(id).set({
+      'uid': u.uid,
+      'name': myName,
+      'version': kAppVersion,
+      'first': first,
+      'lastSeen': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  } catch (_) {}
+}
 
 // ---------------- ভাষা (বাংলা / English) ----------------
 final ValueNotifier<String> appLang = ValueNotifier<String>('bn');
@@ -274,6 +458,17 @@ const Map<String, String> _en = {
   'শুধু ফ্রেন্ড': 'Friends only',
   'ফিল্টার': 'Filter',
   'নতুন চ্যাট': 'New chat',
+  'আপনার অ্যাকাউন্ট ব্লক করা হয়েছে': 'Your account has been blocked',
+  'বিজ্ঞাপন': 'Ad',
+  'বন্ধ করুন': 'Close',
+  'নতুন আপডেট': 'New update',
+  'আপডেট': 'Update',
+  'পরে': 'Later',
+  'ডাউনলোড হচ্ছে…': 'Downloading…',
+  'ইনস্টল শুরু করা যায়নি': 'Could not start the install',
+  'ডাউনলোড লিংক কপি হয়েছে, Chrome-এ পেস্ট করে নামান।': 'Download link copied. Paste it in Chrome to download.',
+  'এই আপডেট করা জরুরি।': 'This update is required.',
+  'ডাউনলোড শেষ হলে ইনস্টল স্ক্রিন আসবে, সেখানে Install চাপুন।': 'When the download finishes, the install screen opens. Tap Install.',
 };
 
 // ---------------- থিম (রঙ), সাউন্ড ----------------
@@ -755,6 +950,8 @@ String authMsg(FirebaseAuthException e) {
       return tr('অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।');
     case 'network-request-failed':
       return tr('ইন্টারনেট সংযোগ পরীক্ষা করুন');
+    case 'user-disabled':
+      return tr('আপনার অ্যাকাউন্ট ব্লক করা হয়েছে');
   }
   return e.message ?? tr('কিছু একটা ভুল হয়েছে');
 }
@@ -1325,11 +1522,16 @@ class _HomePageState extends State<HomePage> {
   String? _searchErr;
   List<Map<String, dynamic>> _results = [];
   String? _error;
+  List<Map<String, dynamic>> _ads = []; // অ্যাডমিনের দেওয়া চালু বিজ্ঞাপন
+  final Set<String> _hiddenAds = {}; // ব্যানার যেগুলো আমি বন্ধ করেছি
+  bool _popupBusy = false;
+  String _updShown = ''; // যে সংস্করণের আপডেট-বক্স এই সেশনে দেখানো হয়েছে
 
   @override
   void initState() {
     super.initState();
     ensureProfile();
+    registerInstall();
     registerPushToken();
     final db = FirebaseFirestore.instance;
 
@@ -1341,6 +1543,53 @@ class _HomePageState extends State<HomePage> {
       final members = List<String>.from(data['members'] ?? const []);
       return members.firstWhere((x) => x != me.uid, orElse: () => '');
     }
+
+    // অ্যাডমিনের পাঠানো আপডেট (খোলা অ্যাপে সাথে সাথে আসে)
+    _subs.add(db.collection('config').doc('update').snapshots().listen((s) {
+      final d = s.data();
+      if (d == null) return;
+      final v = (d['version'] ?? '').toString();
+      final url = (d['url'] ?? '').toString();
+      if (v.isEmpty || url.isEmpty || !isNewerVersion(v, kAppVersion)) return;
+      if (_updShown == v || !mounted) return;
+      _updShown = v;
+      final force = d['force'] == true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: !force,
+        builder: (_) => UpdateDialog(
+            version: v,
+            notes: (d['notes'] ?? '').toString(),
+            url: url,
+            force: force),
+      );
+    }, onError: (_) {}));
+
+    // অ্যাডমিন ব্লক করলে সাথে সাথে লগআউট
+    _subs.add(db.collection('blocked').doc(me.uid).snapshots().listen((s) {
+      if (s.exists) {
+        toast(context, tr('আপনার অ্যাকাউন্ট ব্লক করা হয়েছে'));
+        signOutClean();
+      }
+    }, onError: (_) {}));
+
+    // বিজ্ঞাপন (ব্যানার ও পপআপ)
+    _subs.add(db
+        .collection('ads')
+        .where('active', isEqualTo: true)
+        .snapshots()
+        .listen((s) {
+      final l = [
+        for (final d in s.docs) {...d.data(), 'id': d.id}
+      ];
+      l.sort((a, b) {
+        final ta = (a['time'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+        final tb = (b['time'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+        return tb.compareTo(ta);
+      });
+      if (mounted) setState(() => _ads = l);
+      _showPopups(l);
+    }, onError: (_) {}));
 
     _subs.add(db
         .collection('chats')
@@ -1470,6 +1719,99 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }, onError: (_) {}));
+  }
+
+  Widget _adBody(Map<String, dynamic> a, {double imgH = 130}) {
+    final title = (a['title'] ?? '').toString();
+    final text = (a['text'] ?? '').toString();
+    final img = (a['image'] ?? '').toString();
+    Uint8List? bytes;
+    if (img.isNotEmpty) {
+      try {
+        bytes = base64Decode(img);
+      } catch (_) {}
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (bytes != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(bytes,
+                  width: double.infinity, height: imgH, fit: BoxFit.cover),
+            ),
+          ),
+        if (title.isNotEmpty)
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        if (text.isNotEmpty) Text(text, style: const TextStyle(fontSize: 14)),
+      ],
+    );
+  }
+
+  Future<void> _showPopups(List<Map<String, dynamic>> ads) async {
+    if (_popupBusy) return;
+    _popupBusy = true;
+    try {
+      final p = await SharedPreferences.getInstance();
+      final seen = p.getStringList('seenAds') ?? <String>[];
+      for (final a in ads) {
+        if (a['kind'] != 'popup') continue;
+        final id = a['id'].toString();
+        if (seen.contains(id)) continue;
+        if (!mounted) return;
+        seen.add(id);
+        await p.setStringList('seenAds', seen);
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(tr('বিজ্ঞাপন'), style: const TextStyle(fontSize: 13)),
+            content: SingleChildScrollView(child: _adBody(a, imgH: 180)),
+            actions: [
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(tr('বন্ধ করুন'))),
+            ],
+          ),
+        );
+      }
+    } catch (_) {}
+    _popupBusy = false;
+  }
+
+  Widget _adBanner() {
+    final list = _ads
+        .where((a) => a['kind'] != 'popup' && !_hiddenAds.contains(a['id']))
+        .toList();
+    if (list.isEmpty) return const SizedBox.shrink();
+    final a = list.first;
+    final b = brand(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      decoration: BoxDecoration(
+        color: b.withAlpha(30),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: b.withAlpha(70)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _adBody(a)),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: tr('বন্ধ করুন'),
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () => setState(() => _hiddenAds.add(a['id'].toString())),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -2343,6 +2685,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           _header(),
           if (!searching) _chips(),
+          if (!searching) _adBanner(),
           Expanded(
             child: searching
                 ? _searchList()
@@ -2769,13 +3112,16 @@ class _ChatPageState extends State<ChatPage> {
     try {
       final x = await ImagePicker().pickImage(
         source: src,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 60,
+        maxWidth: 2400,
+        maxHeight: 2400,
+        imageQuality: 90,
       );
       if (x == null) return;
       setState(() => _busy = true);
-      final bytes = await x.readAsBytes();
+      var bytes = await x.readAsBytes();
+      if (bytes.length > kMaxBytes) {
+        bytes = await compute(shrinkImage, bytes);
+      }
       if (bytes.length > kMaxBytes) {
         _snack(tr('ছবি বেশি বড় (সর্বোচ্চ প্রায় ৭০০ KB)'));
       } else {
@@ -3687,7 +4033,8 @@ class _ImageBubbleState extends State<ImageBubble> {
             b,
             width: 220,
             fit: BoxFit.cover,
-            cacheWidth: 600,
+            cacheWidth: 900,
+            filterQuality: FilterQuality.medium,
             gaplessPlayback: true,
           ),
         ),
@@ -3729,7 +4076,7 @@ class ImageViewPage extends StatelessWidget {
       body: Center(
         child: InteractiveViewer(
           maxScale: 5,
-          child: Image.memory(bytes),
+          child: Image.memory(bytes, filterQuality: FilterQuality.high),
         ),
       ),
     );
