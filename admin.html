@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Alap Admin</title>
+<style>
+:root{--bg:#f2f7f6;--card:#fff;--tx:#14201f;--mut:#5f7270;--br:#075e54;--red:#c62828;--ok:#2e7d32;--line:#dbe4e2}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1417;--card:#1b262c;--tx:#e8eeee;--mut:#9aa8a8;--line:#2b3a40;--br:#2bb39e}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Noto Sans Bengali",sans-serif;background:var(--bg);color:var(--tx);font-size:15px}
+header{background:#075e54;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+header b{font-size:20px}
+main{max-width:760px;margin:0 auto;padding:12px}
+.card{background:var(--card);border-radius:16px;padding:14px;margin:10px 0;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--tx);font:inherit;margin:5px 0}
+textarea{min-height:80px}
+button{font:inherit;border:0;border-radius:10px;padding:9px 13px;background:var(--br);color:#fff;cursor:pointer}
+button.g{background:transparent;color:var(--br);border:1px solid var(--br)}
+button.r{background:var(--red)}
+button:disabled{opacity:.5}
+.tabs{display:flex;gap:6px}
+.tabs button{flex:1;padding:9px 4px;background:transparent;color:var(--br);border:1px solid var(--br)}
+.tabs button.on{background:var(--br);color:#fff}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{background:var(--card);border-radius:14px;padding:12px;text-align:center}
+.stat b{display:block;font-size:24px;color:var(--br)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.mut{color:var(--mut);font-size:13px}
+.tag{display:inline-block;font-size:12px;border-radius:8px;padding:2px 8px;margin-left:6px;color:#fff;background:var(--ok)}
+.tag.b{background:var(--red)}
+.tag.o{background:#777}
+img.pv{max-width:100%;max-height:150px;border-radius:10px;margin-top:6px}
+#msg{position:fixed;left:12px;right:12px;bottom:14px;background:#222;color:#fff;padding:12px;border-radius:12px;display:none;z-index:9}
+</style>
+</head>
+<body>
+<header><b>Alap Admin</b><button class="g" id="lo" style="display:none;color:#fff;border-color:#fff">লগআউট</button></header>
+<main>
+<div id="login" class="card">
+  <p><b>অ্যাডমিন লগইন</b></p>
+  <p class="mut">শুধু অ্যাডমিনের আলাদা ইমেইল ও পাসওয়ার্ড। অ্যাপের অ্যাকাউন্ট দিয়ে ঢোকা যাবে না।</p>
+  <input id="em" type="email" placeholder="অ্যাডমিন ইমেইল" autocomplete="username">
+  <input id="pw" type="password" placeholder="পাসওয়ার্ড" autocomplete="current-password">
+  <button id="go" style="width:100%;margin-top:8px">লগইন</button>
+</div>
+
+<div id="app" style="display:none">
+  <div class="stats" id="stats"></div>
+  <div class="tabs" style="margin-top:10px">
+    <button id="t1" class="on">ইউজার</button>
+    <button id="t2">বিজ্ঞাপন</button>
+    <button id="t3">ডাউনলোড</button>
+    <button id="t4">আপডেট</button>
+  </div>
+
+  <div id="p1">
+    <div class="card"><input id="q" placeholder="নাম বা ইমেইল দিয়ে খুঁজুন"></div>
+    <div id="ulist"></div>
+  </div>
+
+  <div id="p2" style="display:none">
+    <div class="card">
+      <p><b>নতুন বিজ্ঞাপন / ঘোষণা</b></p>
+      <select id="ak">
+        <option value="banner">ব্যানার (চ্যাট তালিকার উপরে)</option>
+        <option value="popup">পপআপ (অ্যাপ খুললে একবার)</option>
+      </select>
+      <input id="at" placeholder="শিরোনাম" maxlength="100">
+      <textarea id="ax" placeholder="লেখা" maxlength="600"></textarea>
+      <input id="af" type="file" accept="image/*">
+      <img id="apv" class="pv" style="display:none">
+      <button id="ap" style="width:100%;margin-top:8px">পোস্ট করুন</button>
+    </div>
+    <div id="alist"></div>
+  </div>
+
+  <div id="p3" style="display:none">
+    <div id="dstats" class="stats" style="margin-top:10px"></div>
+    <div class="card mut">ডিভাইস সংখ্যা: অ্যাপে লগইন করা প্রতিটা ফোন একবার গোনা হয়, একই ফোনে ১০ বার আপডেট দিলেও ১। অ্যাপ ডিলিট করে নতুন করে ইনস্টল দিলে নতুন ডিভাইস ধরা হবে। GitHub-এর সংখ্যায় প্রতিটা ডাউনলোডই গোনা হয়, কে ডাউনলোড করল সেটা GitHub জানায় না।</div>
+    <div class="card"><b>GitHub ডাউনলোড (বিল্ড অনুযায়ী)</b><div id="rel"></div></div>
+    <div class="card"><b>ইউজার অনুযায়ী ডিভাইস</b><div id="dev"></div></div>
+  </div>
+
+  <div id="p4" style="display:none">
+    <div class="card" id="ucur"></div>
+    <div class="card">
+      <p><b>সবার কাছে আপডেট পাঠান</b></p>
+      <p class="mut">আগে GitHub-এ নতুন বিল্ড সবুজ হয়ে Releases-এ APK আসার পর এখানে পাঠান। ভার্সন নম্বর অবশ্যই সেই main.dart-এর kAppVersion-এর সাথে মিলতে হবে।</p>
+      <input id="uv" placeholder="নতুন ভার্সন, যেমন 1.5.0">
+      <textarea id="un" placeholder="কী কী নতুন (ইউজাররা দেখবে)" maxlength="600"></textarea>
+      <input id="uu" value="https://github.com/kmdfahim1mb-afk/mychat/releases/latest/download/app-release.apk">
+      <label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input id="uf" type="checkbox" style="width:auto;margin:0"> জরুরি (আপডেট না করলে অ্যাপ চলবে না — সাধারণত বন্ধ রাখুন)</label>
+      <button id="us" style="width:100%">আপডেট পাঠান</button>
+      <button id="uc" class="g" style="width:100%;margin-top:8px">পাঠানো আপডেট তুলে নিন</button>
+    </div>
+  </div>
+</div>
+</main>
+<div id="msg"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const ADMIN_EMAIL = 'admin@alap-panel.com';
+const cfg = {"apiKey": "AIzaSyBACVvr2dski4LmiVBkkoKJ2OAX7hSJaLg", "authDomain": "mychat-52984.firebaseapp.com", "projectId": "mychat-52984", "appId": "1:785791137931:android:d70179e1a81ef77e9efc8e", "messagingSenderId": "785791137931"};
+const app = initializeApp(cfg);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+var users = [], ads = [], inst = [], rels = [], ghError = '', blocked = {}, upd = null, img = '';
+function $(i){return document.getElementById(i)}
+function h(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function say(t){var m=$('msg');m.textContent=t;m.style.display='block';clearTimeout(say.t);say.t=setTimeout(function(){m.style.display='none'},3500)}
+function fmt(ms){if(!ms)return '—';return new Date(ms).toLocaleString('bn-BD',{dateStyle:'medium',timeStyle:'short'})}
+function tms(v){return v && v.toMillis ? v.toMillis() : 0}
+
+function show(on){
+  $('login').style.display = on ? 'none' : 'block';
+  $('app').style.display = on ? 'block' : 'none';
+  $('lo').style.display = on ? 'inline-block' : 'none';
+}
+
+$('go').onclick = async function(){
+  var btn=$('go'); btn.disabled=true;
+  try{
+    var e = $('em').value.trim().toLowerCase();
+    if(e !== ADMIN_EMAIL) throw new Error('এটা অ্যাডমিনের ইমেইল নয়');
+    await signInWithEmailAndPassword(auth, e, $('pw').value);
+    $('pw').value='';
+  }catch(err){ say('লগইন হয়নি: '+(err.code==='auth/invalid-credential'||err.code==='auth/wrong-password'?'ইমেইল বা পাসওয়ার্ড ভুল':err.message)); }
+  btn.disabled=false;
+};
+$('lo').onclick = function(){ signOut(auth); };
+onAuthStateChanged(auth, function(u){
+  if(u && (u.email||'').toLowerCase()===ADMIN_EMAIL){ show(true); loadAll(); }
+  else { show(false); }
+});
+
+function tab(n){
+  for(var i=1;i<=4;i++){ $('p'+i).style.display = n==i?'block':'none'; $('t'+i).className = n==i?'on':''; }
+}
+for(let i=1;i<=4;i++) $('t'+i).onclick=function(){tab(i)};
+
+async function loadAll(){
+  try{
+    var us = await getDocs(collection(db,'users'));
+    users = us.docs.map(function(d){var x=d.data(); return {uid:d.id,name:x.name||'',email:x.email||''}});
+    var bs = await getDocs(collection(db,'blocked')); blocked = {}; bs.docs.forEach(function(d){blocked[d.id]=true});
+    var as = await getDocs(collection(db,'ads'));
+    ads = as.docs.map(function(d){var x=d.data(); return {id:d.id,kind:x.kind||'banner',title:x.title||'',text:x.text||'',image:x.image||'',active:x.active===true,time:tms(x.time)}}).sort(function(a,b){return b.time-a.time});
+    var is = await getDocs(collection(db,'installs'));
+    inst = is.docs.map(function(d){var x=d.data(); return {id:d.id,uid:x.uid||'',name:x.name||'',version:x.version||'',first:x.first||0,last:tms(x.lastSeen)}});
+    var ud = await getDoc(doc(db,'config','update')); upd = ud.exists()?ud.data():null;
+    await loadGh();
+    drawStats(); drawUsers(); drawAds(); drawInstalls(); drawUpdate();
+  }catch(e){ say('ত্রুটি: '+e.message); }
+}
+
+async function loadGh(){
+  ghError=''; rels=[];
+  try{
+    var r = await fetch('https://api.github.com/repos/kmdfahim1mb-afk/mychat/releases?per_page=30');
+    if(!r.ok) throw new Error('GitHub '+r.status);
+    var l = await r.json();
+    rels = l.map(function(x){return {name:x.name||x.tag_name, downloads:(x.assets||[]).reduce(function(a,s){return a+(s.name==='app-release.apk'?(s.download_count||0):0)},0)}});
+  }catch(e){ ghError=e.message; }
+}
+
+var devOf = {};
+function drawStats(){
+  devOf = {};
+  inst.forEach(function(d){ var o=devOf[d.uid]||(devOf[d.uid]={n:0,ver:'',last:0}); o.n++; if(d.last>=o.last){o.last=d.last;o.ver=d.version} });
+  var nb = users.filter(function(u){return blocked[u.uid]}).length;
+  var week = Date.now()-7*86400000;
+  var act = Object.keys(devOf).filter(function(u){return devOf[u].last>week}).length;
+  $('stats').innerHTML =
+    '<div class="stat"><b>'+users.length+'</b>মোট ইউজার</div>'+
+    '<div class="stat"><b>'+nb+'</b>ব্লক করা</div>'+
+    '<div class="stat"><b>'+inst.length+'</b>ইউনিক ডিভাইস</div>'+
+    '<div class="stat"><b>'+act+'</b>৭ দিনে সক্রিয়</div>';
+}
+
+function drawUsers(){
+  var q = $('q').value.trim().toLowerCase();
+  var l = users.filter(function(u){return !q || (u.name+' '+u.email).toLowerCase().indexOf(q)>=0})
+    .sort(function(a,b){return (a.name||'').localeCompare(b.name||'')});
+  if(!l.length){ $('ulist').innerHTML='<div class="card mut">কেউ নেই</div>'; return; }
+  $('ulist').innerHTML = l.map(function(u){
+    var d = devOf[u.uid], bl = !!blocked[u.uid];
+    return '<div class="card"><b>'+h(u.name||'(নাম নেই)')+'</b>'+
+      (bl?'<span class="tag b">ব্লকড</span>':'<span class="tag">সক্রিয়</span>')+
+      '<div class="mut">'+h(u.email)+'</div>'+
+      '<div class="mut">'+(d?d.n+' ডিভাইস · সংস্করণ '+h(d.ver)+' · শেষ খোলা '+fmt(d.last):'ডিভাইসের তথ্য নেই')+'</div>'+
+      '<div class="row">'+
+      (bl ? '<button data-a="unblock" data-u="'+h(u.uid)+'">আনব্লক</button>'
+          : '<button class="r" data-a="block" data-u="'+h(u.uid)+'">ব্লক</button>')+
+      '<button class="g" data-a="reset" data-e="'+h(u.email)+'">পাসওয়ার্ড রিসেট ইমেইল</button>'+
+      '</div></div>';
+  }).join('');
+}
+$('q').oninput = drawUsers;
+
+function drawAds(){
+  if(!ads.length){ $('alist').innerHTML='<div class="card mut">এখনো কোনো বিজ্ঞাপন নেই</div>'; return; }
+  $('alist').innerHTML = ads.map(function(a){
+    return '<div class="card"><b>'+h(a.title||'(শিরোনাম নেই)')+'</b>'+
+      '<span class="tag o">'+(a.kind==='popup'?'পপআপ':'ব্যানার')+'</span>'+
+      (a.active?'<span class="tag">চালু</span>':'<span class="tag b">বন্ধ</span>')+
+      '<div style="margin-top:6px;white-space:pre-wrap">'+h(a.text)+'</div>'+
+      (a.image?'<img class="pv" src="data:image/jpeg;base64,'+h(a.image)+'">':'')+
+      '<div class="row">'+
+      '<button class="g" data-a="tog" data-i="'+h(a.id)+'" data-on="'+(a.active?'0':'1')+'">'+(a.active?'বন্ধ করুন':'চালু করুন')+'</button>'+
+      '<button class="r" data-a="adel" data-i="'+h(a.id)+'">ডিলিট</button>'+
+      '</div></div>';
+  }).join('');
+}
+
+function vnew(a,b){var x=String(a).split('.'),y=String(b).split('.');for(var i=0;i<4;i++){var p=parseInt(x[i]||'0',10)||0,q=parseInt(y[i]||'0',10)||0;if(p!==q)return p>q}return false}
+
+function drawInstalls(){
+  var total = rels.reduce(function(a,r){return a+r.downloads},0);
+  var people = Object.keys(devOf);
+  $('dstats').innerHTML =
+    '<div class="stat"><b>'+inst.length+'</b>ইউনিক ডিভাইস</div>'+
+    '<div class="stat"><b>'+people.length+'</b>ইউজার (ডিভাইস সহ)</div>'+
+    '<div class="stat"><b>'+total+'</b>GitHub মোট ডাউনলোড</div>'+
+    '<div class="stat"><b>'+(rels[0]?rels[0].downloads:0)+'</b>সর্বশেষ বিল্ডের ডাউনলোড</div>';
+  $('rel').innerHTML = ghError ? '<div class="mut">GitHub থেকে আনা যায়নি ('+h(ghError)+')</div>' :
+    (rels.map(function(r){return '<div class="row" style="justify-content:space-between"><span>'+h(r.name)+'</span><b>'+r.downloads+'</b></div>'}).join('') || '<div class="mut">নেই</div>');
+  var nameOf={}, emailOf={}; users.forEach(function(u){nameOf[u.uid]=u.name; emailOf[u.uid]=u.email});
+  $('dev').innerHTML = people.sort(function(a,b){return devOf[b].last-devOf[a].last}).map(function(u){
+    var o=devOf[u];
+    return '<div style="padding:8px 0;border-top:1px solid var(--line)"><b>'+h(nameOf[u]||'(নাম নেই)')+'</b> <span class="tag o">'+o.n+' ডিভাইস</span>'+
+      '<div class="mut">'+h(emailOf[u]||'')+' · সংস্করণ '+h(o.ver||'?')+' · শেষ খোলা '+fmt(o.last)+'</div></div>';
+  }).join('') || '<div class="mut">এখনো কোনো ডিভাইসের তথ্য আসেনি (নতুন অ্যাপ ইনস্টল ও লগইন করলে আসবে)</div>';
+}
+
+function drawUpdate(){
+  if(!upd || !upd.version){ $('ucur').innerHTML='<b>এখন কোনো আপডেট পাঠানো নেই</b>'; return; }
+  var old = inst.filter(function(d){return vnew(upd.version,d.version||'0')}).length;
+  $('ucur').innerHTML='<b>পাঠানো আপডেট: '+h(upd.version)+'</b>'+(upd.force?'<span class="tag b">জরুরি</span>':'')+
+    '<div class="mut">'+h(upd.notes||'')+'</div>'+
+    '<div style="margin-top:6px">আপডেট করেছে: <b>'+(inst.length-old)+'</b> · এখনো করেনি: <b>'+old+'</b> (ডিভাইস)</div>';
+}
+
+document.addEventListener('click', async function(ev){
+  var b = ev.target.closest('button[data-a]'); if(!b) return;
+  var a = b.getAttribute('data-a'), u = b.getAttribute('data-u'), i = b.getAttribute('data-i');
+  try{
+    if(a==='block'){ if(!confirm('এই ইউজারকে ব্লক করবেন? সে সাথে সাথে অ্যাপ থেকে বেরিয়ে যাবে।')) return;
+      if(auth.currentUser && u===auth.currentUser.uid){ say('নিজেকে ব্লক করা যাবে না'); return; }
+      await setDoc(doc(db,'blocked',u),{time:serverTimestamp()}); say('ব্লক হয়েছে'); }
+    else if(a==='unblock'){ await deleteDoc(doc(db,'blocked',u)); say('আনব্লক হয়েছে'); }
+    else if(a==='reset'){ var e=b.getAttribute('data-e'); if(!confirm(e+' ঠিকানায় রিসেট লিংক যাবে। পাঠাবেন?')) return; await sendPasswordResetEmail(auth,e); say('রিসেট ইমেইল পাঠানো হয়েছে'); return; }
+    else if(a==='tog'){ await updateDoc(doc(db,'ads',i),{active:b.getAttribute('data-on')==='1'}); }
+    else if(a==='adel'){ if(!confirm('বিজ্ঞাপনটা ডিলিট করবেন?')) return; await deleteDoc(doc(db,'ads',i)); }
+    await loadAll();
+  }catch(e){ say('ব্যর্থ: '+e.message); }
+});
+
+$('af').onchange = function(){
+  var f = this.files[0]; img=''; $('apv').style.display='none';
+  if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var im = new Image();
+    im.onload = function(){
+      var m = 900, w = im.width, hh = im.height;
+      if(w>m || hh>m){ var k = m/Math.max(w,hh); w=Math.round(w*k); hh=Math.round(hh*k); }
+      var c = document.createElement('canvas'); c.width=w; c.height=hh;
+      c.getContext('2d').drawImage(im,0,0,w,hh);
+      var qv = 0.85, d = '';
+      do { d = c.toDataURL('image/jpeg', qv); qv -= 0.1; } while(d.length > 550000 && qv > 0.2);
+      if(d.length > 600000){ say('ছবি অনেক বড়, ছোট ছবি দিন'); return; }
+      img = d.split(',')[1]; $('apv').src = d; $('apv').style.display='block';
+    };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+};
+
+$('ap').onclick = async function(){
+  var t=$('at').value.trim(), x=$('ax').value.trim();
+  if(!t && !x && !img){ say('কিছু লিখুন বা ছবি দিন'); return; }
+  var btn=$('ap'); btn.disabled=true;
+  try{
+    await addDoc(collection(db,'ads'),{kind:$('ak').value,title:t,text:x,image:img,active:true,time:serverTimestamp()});
+    $('at').value=''; $('ax').value=''; $('af').value=''; img=''; $('apv').style.display='none';
+    say('পোস্ট হয়েছে'); await loadAll();
+  }catch(e){ say('ব্যর্থ: '+e.message); }
+  btn.disabled=false;
+};
+
+$('us').onclick=async function(){
+  var v=$('uv').value.trim(), url=$('uu').value.trim();
+  if(!/^[0-9]+(\.[0-9]+){0,3}$/.test(v)){ say('ভার্সন এভাবে লিখুন: 1.5.0'); return; }
+  if(!/^https:\/\//.test(url)){ say('লিংক https:// দিয়ে শুরু হতে হবে'); return; }
+  var btn=$('us'); btn.disabled=true;
+  try{
+    await setDoc(doc(db,'config','update'),{version:v,notes:$('un').value.trim(),url:url,force:$('uf').checked,time:serverTimestamp()});
+    say('আপডেট পাঠানো হয়েছে'); await loadAll();
+  }catch(e){ say('ব্যর্থ: '+e.message); }
+  btn.disabled=false;
+};
+$('uc').onclick=async function(){
+  if(!confirm('পাঠানো আপডেটটা তুলে নেবেন?')) return;
+  try{ await deleteDoc(doc(db,'config','update')); say('তুলে নেওয়া হয়েছে'); await loadAll(); }catch(e){ say('ব্যর্থ: '+e.message); }
+};
+</script>
+</body>
+</html>
