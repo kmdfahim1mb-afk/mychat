@@ -2480,8 +2480,8 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         children: [
           const Padding(
-            padding: EdgeInsets.only(left: 18, right: 8),
-            child: Icon(Icons.search, size: 28),
+            padding: EdgeInsets.only(left: 14, right: 8),
+            child: Icon(Icons.search, size: 22),
           ),
           Expanded(
             child: TextField(
@@ -2493,7 +2493,7 @@ class _HomePageState extends State<HomePage> {
                 hintText: tr('নাম বা পুরো ইমেইল দিয়ে খুঁজুন'),
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 18),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -2536,17 +2536,17 @@ class _HomePageState extends State<HomePage> {
             SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 6, 6, 20),
+                padding: const EdgeInsets.fromLTRB(16, 2, 4, 12),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
-                        const PlaneLogo(size: 40),
-                        const SizedBox(width: 12),
+                        const PlaneLogo(size: 30),
+                        const SizedBox(width: 10),
                         const Text(kAppName,
                             style: TextStyle(
-                                fontSize: 36,
+                                fontSize: 28,
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold)),
                         const Spacer(),
@@ -2556,7 +2556,7 @@ class _HomePageState extends State<HomePage> {
                             count: _incoming.length,
                             isLabelVisible: _incoming.isNotEmpty,
                             child: const Icon(Icons.person_add_alt_1,
-                                color: Colors.white, size: 30),
+                                color: Colors.white, size: 25),
                           ),
                           onPressed: () => Navigator.push(
                             context,
@@ -2566,7 +2566,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         PopupMenuButton<String>(
                           icon: const Icon(Icons.more_vert,
-                              color: Colors.white, size: 28),
+                              color: Colors.white, size: 24),
                           onSelected: (v) {
                             if (v == 'settings') {
                               setState(() => _tab = 3);
@@ -2617,7 +2617,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 6),
                     Padding(
                       padding: const EdgeInsets.only(right: 12),
                       child: _searchBar(),

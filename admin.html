@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>Alap Admin</title>
+<link rel="icon" href="admin-logo.png">
 <style>
 :root{--bg:#f2f7f6;--card:#fff;--tx:#14201f;--mut:#5f7270;--br:#075e54;--red:#c62828;--ok:#2e7d32;--line:#dbe4e2}
 @media(prefers-color-scheme:dark){:root{--bg:#0e1417;--card:#1b262c;--tx:#e8eeee;--mut:#9aa8a8;--line:#2b3a40;--br:#2bb39e}}
@@ -12,6 +13,9 @@
 body{margin:0;font-family:system-ui,-apple-system,"Noto Sans Bengali",sans-serif;background:var(--bg);color:var(--tx);font-size:15px}
 header{background:#075e54;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
 header b{font-size:20px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand img{width:36px;height:36px;border-radius:9px}
+.big{display:block;width:84px;height:84px;border-radius:20px;margin:4px auto 10px}
 main{max-width:760px;margin:0 auto;padding:12px}
 .card{background:var(--card);border-radius:16px;padding:14px;margin:10px 0;box-shadow:0 2px 8px rgba(0,0,0,.08)}
 input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--tx);font:inherit;margin:5px 0}
@@ -36,10 +40,11 @@ img.pv{max-width:100%;max-height:150px;border-radius:10px;margin-top:6px}
 </style>
 </head>
 <body>
-<header><b>Alap Admin</b><button class="g" id="lo" style="display:none;color:#fff;border-color:#fff">লগআউট</button></header>
+<header><div class="brand"><img src="admin-logo.png" alt=""><b>Alap Admin</b></div><button class="g" id="lo" style="display:none;color:#fff;border-color:#fff">লগআউট</button></header>
 <main>
 <div id="login" class="card">
-  <p><b>অ্যাডমিন লগইন</b></p>
+  <img class="big" src="admin-logo.png" alt="">
+  <p style="text-align:center"><b>অ্যাডমিন লগইন</b></p>
   <p class="mut">শুধু অ্যাডমিনের আলাদা ইমেইল ও পাসওয়ার্ড। অ্যাপের অ্যাকাউন্ট দিয়ে ঢোকা যাবে না।</p>
   <input id="em" type="email" placeholder="অ্যাডমিন ইমেইল" autocomplete="username">
   <input id="pw" type="password" placeholder="পাসওয়ার্ড" autocomplete="current-password">
@@ -78,8 +83,7 @@ img.pv{max-width:100%;max-height:150px;border-radius:10px;margin-top:6px}
 
   <div id="p3" style="display:none">
     <div id="dstats" class="stats" style="margin-top:10px"></div>
-    <div class="card mut">ডিভাইস সংখ্যা: অ্যাপে লগইন করা প্রতিটা ফোন একবার গোনা হয়, একই ফোনে ১০ বার আপডেট দিলেও ১। অ্যাপ ডিলিট করে নতুন করে ইনস্টল দিলে নতুন ডিভাইস ধরা হবে। GitHub-এর সংখ্যায় প্রতিটা ডাউনলোডই গোনা হয়, কে ডাউনলোড করল সেটা GitHub জানায় না।</div>
-    <div class="card"><button id="rs" class="r" style="width:100%">গণনা নতুন করে শুরু করুন (এখন ১ ধরে)</button><div class="mut" style="margin-top:6px">আগের সব ডাউনলোড ও ডিভাইসের হিসাব বাদ যাবে, এখন থেকে নতুন করে গোনা শুরু হবে। ডিভাইস আবার গোনা হবে যখন ইউজার নতুন অ্যাপ খুলবে।</div></div>
+    <div class="card mut">মোট ডাউনলোড = অ্যাপ খুলে লগইন করা ইউনিক ফোন আর GitHub-এর ডাউনলোড, এ দুটোর যেটা বেশি সেটা। একই ফোনে বারবার ইনস্টল বা আপডেট দিলেও ১ গোনা হয়। GitHub-এর সংখ্যায় প্রতিটা ডাউনলোডই গোনা হয়, কে নামাল সেটা GitHub জানায় না।</div>
     <div class="card"><b>GitHub ডাউনলোড (বিল্ড অনুযায়ী)</b><div id="rel"></div></div>
     <div class="card"><b>ইউজার অনুযায়ী ডিভাইস</b><div id="dev"></div></div>
   </div>
@@ -231,7 +235,7 @@ function drawInstalls(){
   $('dstats').innerHTML =
     '<div class="stat"><b>'+inst.length+'</b>ইউনিক ডিভাইস</div>'+
     '<div class="stat"><b>'+people.length+'</b>ইউজার (ডিভাইস সহ)</div>'+
-    '<div class="stat"><b>'+total+'</b>GitHub মোট ডাউনলোড</div>'+
+    '<div class="stat"><b>'+Math.max(total,inst.length)+'</b>মোট ডাউনলোড</div>'+
     '<div class="stat"><b>'+(rels[0]?rels[0].downloads:0)+'</b>সর্বশেষ বিল্ডের ডাউনলোড</div>';
   $('rel').innerHTML = ghError ? '<div class="mut">GitHub থেকে আনা যায়নি ('+h(ghError)+')</div>' :
     (rels.map(function(r){return '<div class="row" style="justify-content:space-between"><span>'+h(r.name)+'</span><b>'+r.downloads+'</b></div>'}).join('') || '<div class="mut">নেই</div>');
@@ -295,20 +299,6 @@ $('ap').onclick = async function(){
     await addDoc(collection(db,'ads'),{kind:$('ak').value,title:t,text:x,image:img,active:true,time:serverTimestamp()});
     $('at').value=''; $('ax').value=''; $('af').value=''; img=''; $('apv').style.display='none';
     say('পোস্ট হয়েছে'); await loadAll();
-  }catch(e){ say('ব্যর্থ: '+e.message); }
-  btn.disabled=false;
-};
-
-$('rs').onclick=async function(){
-  if(!confirm('আগের সব ডাউনলোড ও ডিভাইসের গণনা বাদ দিয়ে নতুন করে শুরু করবেন? এটা ফেরানো যাবে না।')) return;
-  var btn=$('rs'); btn.disabled=true;
-  try{
-    var m={};
-    rels.forEach(function(r,i){ m[r.name] = (i===0 && r.raw>0) ? r.raw-1 : r.raw; });
-    await setDoc(doc(db,'config','downloadBase'),{map:m,time:serverTimestamp()});
-    var is = await getDocs(collection(db,'installs'));
-    for(var k=0;k<is.docs.length;k++){ await deleteDoc(is.docs[k].ref); }
-    say('গণনা নতুন করে শুরু হয়েছে'); await loadAll();
   }catch(e){ say('ব্যর্থ: '+e.message); }
   btn.disabled=false;
 };
