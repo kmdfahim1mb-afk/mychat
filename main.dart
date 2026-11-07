@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:android_id/android_id.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_selector/file_selector.dart';
@@ -189,29 +190,33 @@ class _UpdateDialogState extends State<UpdateDialog> {
   }
 }
 
-/// এই ফোনের নিজস্ব আইডি (আপডেটে একই থাকে, তাই একই ফোন একবারই গোনা হয়)।
-/// অ্যাপ ডিলিট করে নতুন ইনস্টল দিলে নতুন আইডি হয়।
+/// এই ফোনের নিজস্ব আইডি। Android-এর ANDROID_ID ব্যবহার করা হয়, যা অ্যাপ ডিলিট করে
+/// আবার ইনস্টল দিলেও একই থাকে, তাই একই ফোন সবসময় ১ গোনা হয়।
+/// (ফোন ফ্যাক্টরি রিসেট করলে বা অ্যাপের সাইনিং কী বদলালে আইডি বদলে যায়।)
 Future<void> registerInstall() async {
   try {
     final u = FirebaseAuth.instance.currentUser;
     if (u == null) return;
-    final p = await SharedPreferences.getInstance();
-    var id = p.getString('deviceId') ?? '';
-    if (id.isEmpty) {
-      final r = math.Random.secure();
-      id = List.generate(24, (_) => r.nextInt(16).toRadixString(16)).join();
-      await p.setString('deviceId', id);
-    }
-    var first = p.getInt('installTime') ?? 0;
-    if (first == 0) {
-      first = DateTime.now().millisecondsSinceEpoch;
-      await p.setInt('installTime', first);
+    var id = '';
+    try {
+      id = (await const AndroidId().getId()) ?? '';
+    } catch (_) {}
+    if (id.isNotEmpty) {
+      id = 'a$id';
+    } else {
+      // ব্যাকআপ: ANDROID_ID না পেলে অ্যাপের নিজস্ব আইডি (রিইনস্টলে বদলাবে)
+      final p = await SharedPreferences.getInstance();
+      id = p.getString('deviceId') ?? '';
+      if (id.isEmpty) {
+        final r = math.Random.secure();
+        id = List.generate(24, (_) => r.nextInt(16).toRadixString(16)).join();
+        await p.setString('deviceId', id);
+      }
     }
     await FirebaseFirestore.instance.collection('installs').doc(id).set({
       'uid': u.uid,
       'name': myName,
       'version': kAppVersion,
-      'first': first,
       'lastSeen': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   } catch (_) {}
