@@ -79,6 +79,7 @@ img.pv{max-width:100%;max-height:150px;border-radius:10px;margin-top:6px}
   <div id="p3" style="display:none">
     <div id="dstats" class="stats" style="margin-top:10px"></div>
     <div class="card mut">ডিভাইস সংখ্যা: অ্যাপে লগইন করা প্রতিটা ফোন একবার গোনা হয়, একই ফোনে ১০ বার আপডেট দিলেও ১। অ্যাপ ডিলিট করে নতুন করে ইনস্টল দিলে নতুন ডিভাইস ধরা হবে। GitHub-এর সংখ্যায় প্রতিটা ডাউনলোডই গোনা হয়, কে ডাউনলোড করল সেটা GitHub জানায় না।</div>
+    <div class="card"><button id="rs" class="r" style="width:100%">গণনা নতুন করে শুরু করুন (এখন ১ ধরে)</button><div class="mut" style="margin-top:6px">আগের সব ডাউনলোড ও ডিভাইসের হিসাব বাদ যাবে, এখন থেকে নতুন করে গোনা শুরু হবে। ডিভাইস আবার গোনা হবে যখন ইউজার নতুন অ্যাপ খুলবে।</div></div>
     <div class="card"><b>GitHub ডাউনলোড (বিল্ড অনুযায়ী)</b><div id="rel"></div></div>
     <div class="card"><b>ইউজার অনুযায়ী ডিভাইস</b><div id="dev"></div></div>
   </div>
@@ -113,7 +114,7 @@ const app = initializeApp(cfg);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-var users = [], ads = [], inst = [], rels = [], ghError = '', blocked = {}, upd = null, img = '';
+var users = [], ads = [], inst = [], rels = [], ghError = '', blocked = {}, upd = null, img = '', base = {};
 function $(i){return document.getElementById(i)}
 function h(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function say(t){var m=$('msg');m.textContent=t;m.style.display='block';clearTimeout(say.t);say.t=setTimeout(function(){m.style.display='none'},3500)}
@@ -157,6 +158,7 @@ async function loadAll(){
     var is = await getDocs(collection(db,'installs'));
     inst = is.docs.map(function(d){var x=d.data(); return {id:d.id,uid:x.uid||'',name:x.name||'',version:x.version||'',first:x.first||0,last:tms(x.lastSeen)}});
     var ud = await getDoc(doc(db,'config','update')); upd = ud.exists()?ud.data():null;
+    var bd = await getDoc(doc(db,'config','downloadBase')); base = bd.exists() ? (bd.data().map||{}) : {};
     await loadGh();
     drawStats(); drawUsers(); drawAds(); drawInstalls(); drawUpdate();
   }catch(e){ say('ত্রুটি: '+e.message); }
@@ -168,7 +170,7 @@ async function loadGh(){
     var r = await fetch('https://api.github.com/repos/kmdfahim1mb-afk/mychat/releases?per_page=30');
     if(!r.ok) throw new Error('GitHub '+r.status);
     var l = await r.json();
-    rels = l.map(function(x){return {name:x.name||x.tag_name, downloads:(x.assets||[]).reduce(function(a,s){return a+(s.name==='app-release.apk'?(s.download_count||0):0)},0)}});
+    rels = l.map(function(x){var n=x.name||x.tag_name, raw=(x.assets||[]).reduce(function(a,s){return a+(s.name==='app-release.apk'?(s.download_count||0):0)},0); return {name:n, raw:raw, downloads:Math.max(0, raw-(base[n]||0))}});
   }catch(e){ ghError=e.message; }
 }
 
@@ -293,6 +295,20 @@ $('ap').onclick = async function(){
     await addDoc(collection(db,'ads'),{kind:$('ak').value,title:t,text:x,image:img,active:true,time:serverTimestamp()});
     $('at').value=''; $('ax').value=''; $('af').value=''; img=''; $('apv').style.display='none';
     say('পোস্ট হয়েছে'); await loadAll();
+  }catch(e){ say('ব্যর্থ: '+e.message); }
+  btn.disabled=false;
+};
+
+$('rs').onclick=async function(){
+  if(!confirm('আগের সব ডাউনলোড ও ডিভাইসের গণনা বাদ দিয়ে নতুন করে শুরু করবেন? এটা ফেরানো যাবে না।')) return;
+  var btn=$('rs'); btn.disabled=true;
+  try{
+    var m={};
+    rels.forEach(function(r,i){ m[r.name] = (i===0 && r.raw>0) ? r.raw-1 : r.raw; });
+    await setDoc(doc(db,'config','downloadBase'),{map:m,time:serverTimestamp()});
+    var is = await getDocs(collection(db,'installs'));
+    for(var k=0;k<is.docs.length;k++){ await deleteDoc(is.docs[k].ref); }
+    say('গণনা নতুন করে শুরু হয়েছে'); await loadAll();
   }catch(e){ say('ব্যর্থ: '+e.message); }
   btn.disabled=false;
 };
