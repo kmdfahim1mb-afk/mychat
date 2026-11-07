@@ -23,7 +23,7 @@ dependencies:
   firebase_messaging: '>=15.1.0'
   gal: '>=2.3.0'
   image: '>=4.1.0'
-  flutter_local_notifications: '>=18.0.0'
+  flutter_local_notifications: '>=20.0.0 <20.1.0'
 
 flutter:
   uses-material-design: true
