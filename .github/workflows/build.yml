@@ -96,6 +96,18 @@ jobs:
           flutter pub get
           dart run flutter_launcher_icons
 
+      - name: Use fixed signing key
+        env:
+          KS: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            mkdir -p ~/.android
+            echo "$KS" | base64 -d > ~/.android/debug.keystore
+            echo "fixed signing key installed"
+          else
+            echo "no key secret set, using a random key"
+          fi
+
       - name: Build APK
         working-directory: app
         run: |
