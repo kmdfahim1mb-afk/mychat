@@ -37,7 +37,7 @@ const kCallWorkerUrl = 'https://raspy-surf-cfe5.kmdfahim1mb.workers.dev';
 const kMaxBytes = 700000;
 
 /// অ্যাপের সংস্করণ (ডিভাইস গণনায় আপডেটের সংস্করণ দেখাতে)
-const kAppVersion = '1.5.0';
+const kAppVersion = '1.6.0';
 
 /// ছবি ছোট করার ধাপ: আগে বড় মাপ ও ভালো মান দিয়ে চেষ্টা, না হলে ধাপে ধাপে কমানো।
 Uint8List shrinkImage(Uint8List src) {
